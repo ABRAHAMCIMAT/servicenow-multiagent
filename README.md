@@ -171,3 +171,30 @@ export LANGFUSE_HOST="https://cloud.langfuse.com"
 ```
 
 Con esto, cada traza/span/generación se envía a Langfuse para observabilidad LLM nativa (latencias por sub-agente, árboles de ejecución, costos automáticos).
+
+## 🧠 Mejores Prácticas LLMOps
+
+El sistema aplica las mejores prácticas de **LLMOps** para el desarrollo de
+sistemas multiagentes conversacionales, con documentación de cada fase en español.
+
+### Paquete LLMOps (`backend/llmops/`)
+| Módulo | Función |
+|--------|---------|
+| `logging.py` | Logging estructurado (JSON) con contexto por conversación |
+| `errors.py` | Excepciones tipadas, reintentos con backoff, degradación elegante |
+| `prompts.py` | Gestión y versionado de prompts (Registry) |
+| `evals.py` | Evaluación de salidas de agentes (checks deterministas) |
+| `guardrails.py` | Validación de entrada/salida, anti inyección de prompt |
+| `patterns.py` | Patrones de diseño (Registry, Strategy, Chain, Facade, Observer) |
+
+### Documentación por fase (en español)
+| Fase | Documento |
+|------|-----------|
+| Índice | [docs/llmops/00_INDICE.md](docs/llmops/00_INDICE.md) |
+| 1. Planificación | [docs/llmops/01_PLANIFICACION.md](docs/llmops/01_PLANIFICACION.md) |
+| 2. Datos y Prompts | [docs/llmops/02_DATOS_Y_PROMPTS.md](docs/llmops/02_DATOS_Y_PROMPTS.md) |
+| 3. Desarrollo | [docs/llmops/03_DESARROLLO.md](docs/llmops/03_DESARROLLO.md) |
+| 4. Evaluación | [docs/llmops/04_EVALUACION.md](docs/llmops/04_EVALUACION.md) |
+| 5. Observabilidad | [docs/llmops/05_OBSERVABILIDAD.md](docs/llmops/05_OBSERVABILIDAD.md) |
+| 6. Despliegue | [docs/llmops/06_DESPLIEGUE.md](docs/llmops/06_DESPLIEGUE.md) |
+| 7. Guardrails | [docs/llmops/07_GUARDRAILS.md](docs/llmops/07_GUARDRAILS.md) |
