@@ -33,8 +33,18 @@ from .observability.telemetry import Telemetry, get_telemetry
 from .observability.traced_coordinator import TracedCoordinator
 from .observability.metrics import MetricsEngine
 from .observability.dashboard_api import build_dashboard_payload
+from .llmops.logging import setup_logging, get_logger
+from .llmops.guardrails import default_guardrails
+from .llmops.errors import ValidationError
 
-app = FastAPI(title="ServiceNow Multi-Agent System", version="2.0.0")
+app = FastAPI(title="ServiceNow Multi-Agent System", version="2.1.0")
+
+# Configurar logging estructurado (LLMOps)
+setup_logging(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    log_file=os.getenv("LOG_FILE", "/agent/task/servicenow-multiagent/backend/data/app.log"),
+)
+log = get_logger("server")
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,6 +99,12 @@ def health():
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
+    # Guardrail de entrada (LLMOps)
+    try:
+        req.message = default_guardrails.validate_input(req.message)
+    except ValidationError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    log.info("chat recibido", extra={"caller": req.caller, "message": req.message[:100]})
     conv = traced.handle(req.message, caller=req.caller)
     store.update(conv)
     return conv.to_dict()
