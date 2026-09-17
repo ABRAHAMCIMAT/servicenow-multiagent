@@ -17,6 +17,7 @@ from .diagnostic import DiagnosticAgent
 from .policy import PolicyAgent
 from .execution import ExecutionAgent
 from .knowledge import KnowledgeAgent
+from .metrics import MetricsAgent
 
 
 log = get_logger("agente.coordinador")
@@ -32,6 +33,7 @@ class CoordinatorAgent:
         self.policy = PolicyAgent(llm)
         self.execution = ExecutionAgent(llm, snow)
         self.knowledge = KnowledgeAgent(llm, snow)
+        self.metrics = MetricsAgent()
 
     def handle(self, user_message: str, caller: str = "Usuario") -> Conversation:
         log.info("conversación iniciada", extra={"caller": caller, "user_message": user_message[:100]})
@@ -73,6 +75,13 @@ class CoordinatorAgent:
 
         if cl.intent in (Intent.INCIDENT, Intent.SERVICE_REQUEST, Intent.APPROVAL):
             return self._handle_resolution(conv)
+
+        # metrics / dashboard query
+        if self._is_metrics_query(user_message):
+            result = self.metrics.answer(user_message)
+            conv.add("metricas", result["message"], data=result)
+            conv.status = "resolved"
+            return conv
 
         # general
         conv.add("coordinador", "¿En qué más puedo ayudarte? Puedo resolver incidentes, "
@@ -153,6 +162,13 @@ class CoordinatorAgent:
                  data={"approval": notif, "manager": mgr_name, "resource": resource})
         conv.status = "awaiting_approval"
         return conv
+
+    def _is_metrics_query(self, msg: str) -> bool:
+        m = msg.lower()
+        keywords = ["dashboard", "métrica", "metrica", "kpi", "estadística", "estadistica",
+                    "rendimiento", "fcr", "mttr", "costo", "costos", "tokens",
+                    "escalación", "escalacion", "abandono", "observabilidad", "monitoreo"]
+        return any(k in m for k in keywords)
 
     def _resource_for(self, action: str, msg: str) -> str:
         if action == "request_hardware":
