@@ -115,3 +115,59 @@ servicenow-multiagent/
 - `GET /api/conversations/{id}` — detalle
 - `POST /api/escalate` — escalar a humano
 - `POST /v1/chat/completions` — endpoint OpenAI-compatible (para Jan)
+
+## 📊 Observabilidad y Dashboard (Control Total)
+
+El sistema incluye una capa de **observabilidad completa** con telemetría JSON estandarizada (modelo-agnóstica) y un **dashboard de 4 dimensiones** para el control total del multiagente.
+
+### Arquitectura de observabilidad
+
+```
+[Agentes] ──> Telemetry (JSONL estandarizado) ──> MetricsEngine ──> /api/dashboard
+     │                    │
+     └──> LLM instrumentado ──> Langfuse (opcional, 1 línea)
+```
+
+- **Modelo-agnóstico**: los logs JSON son idénticos sin importar si usas OpenAI, Jan o Mock.
+- **Langfuse**: integración nativa opcional (una línea de código) que registra latencias por sub-agente, árboles de ejecución y costos automáticamente.
+- **Sin dependencias**: si no configuras Langfuse, todo corre con telemetría local JSONL.
+
+### Las 4 dimensiones del dashboard
+
+| Dimensión | Métricas |
+|-----------|----------|
+| **1. Negocio/Operación (ITSM)** | FCR, deflexión de tickets, distribución de intenciones, MTTR |
+| **2. Rendimiento (Latencia/IA)** | E2E latency, tiempo por agente, TTFT, RAG hit rate |
+| **3. Costos y Consumo** | Costo por conversación, tokens (input/output), costo total USD |
+| **4. Orquestación/Ciclo de vida** | Tasa de escalación, awaiting_approval, tasa de abandono |
+
+### Uso
+
+```bash
+# 1. Generar telemetría de demo (puebla el dashboard)
+python3 scripts/demo_telemetry.py
+
+# 2. Levantar el servidor
+python3 -m backend.server
+
+# 3. Abrir el dashboard
+# http://localhost:8000/dashboard
+```
+
+### Endpoints de observabilidad
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/dashboard` | Métricas de las 4 dimensiones (JSON) |
+| `GET /api/dashboard/events` | Eventos de telemetría crudos (JSONL) |
+| `GET /api/health` | Estado del sistema + observabilidad |
+
+### Configuración de Langfuse (opcional)
+
+```bash
+export LANGFUSE_PUBLIC_KEY="pk-..."
+export LANGFUSE_SECRET_KEY="sk-..."
+export LANGFUSE_HOST="https://cloud.langfuse.com"
+```
+
+Con esto, cada traza/span/generación se envía a Langfuse para observabilidad LLM nativa (latencias por sub-agente, árboles de ejecución, costos automáticos).
