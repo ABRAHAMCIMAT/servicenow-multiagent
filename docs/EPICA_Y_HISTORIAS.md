@@ -1,12 +1,14 @@
 # Épica e Historias de Usuario — ServiceNow Multi-Agent Conversational System
 
+> **Versión 2.0** — Incluye observabilidad, dashboard de 4 dimensiones, LLMOps y control total del sistema.
+
 ## 🎯 ÉPICA
 
 **EPIC-001 · Sistema Multiagente Conversacional de Soporte TI sobre ServiceNow**
 
 > **Como** usuario final de TI (empleado) y **como** agente de soporte (Nivel 1/2/3),
-> **quiero** resolver incidentes, solicitudes de servicio y consultas de conocimiento mediante una conversación en lenguaje natural que orquesta agentes especializados (triaje, diagnóstico, políticas, ejecución, RAG, seguimiento y escalación),
-> **para** reducir el tiempo de resolución, eliminar tareas manuales repetitivas, evitar transferencias frías y mejorar la experiencia de soporte de extremo a extremo.
+> **quiero** resolver incidentes, solicitudes de servicio y consultas de conocimiento mediante una conversación en lenguaje natural que orquesta agentes especializados (triaje, diagnóstico, políticas, ejecución, RAG, seguimiento, escalación y métricas),
+> **para** reducir el tiempo de resolución, eliminar tareas manuales repetitivas, evitar transferencias frías, mejorar la experiencia de soporte de extremo a extremo y tener **control total** del sistema mediante observabilidad y métricas en 4 dimensiones.
 
 **Criterios de aceptación de la épica (DoD):**
 - El sistema resuelve de extremo a extremo al menos 4 intenciones: incidente, solicitud de servicio, consulta de conocimiento y estado de ticket.
@@ -14,6 +16,10 @@
 - Las aprobaciones se orquestan notificando al manager por Slack/Teams/WhatsApp y quedan en estado `awaiting_approval`.
 - Las escalaciones a Nivel 2/3 entregan un resumen ejecutivo del diagnóstico.
 - El sistema es modelo-agnóstico (Jan / OpenAI / mock) y corre en modo demo sin credenciales.
+- El sistema emite **telemetría JSON estandarizada** (modelo-agnóstica) para observabilidad.
+- El **dashboard de 4 dimensiones** (Negocio, Rendimiento, Costos, Orquestación) es accesible desde el frontend y a través del multiagente.
+- Se aplican **mejores prácticas LLMOps**: logging estructurado, control de errores, guardrails, evaluación y patrones de diseño.
+- El **Agente de Métricas** responde consultas de KPIs y estado del sistema en lenguaje natural.
 
 ---
 
@@ -37,6 +43,7 @@
 - El Coordinador recibe el mensaje y crea una conversación con estado.
 - Responde en lenguaje natural sin exponer detalles técnicos internos.
 - Mantiene el contexto a lo largo de la conversación.
+- Emite telemetría de la conversación (trace) para observabilidad.
 
 ---
 
@@ -55,6 +62,8 @@
 - Asigna categoría, subcategoría y Assignment Group.
 - Calcula la prioridad SLA a partir de impacto, urgencia, sentimiento y palabras clave.
 - Devuelve JSON estructurado con heurísticas de respaldo.
+- Aplica **guardrails** de entrada (longitud, anti inyección de prompt).
+- Evalúa la salida (esquema JSON, intención válida) y registra el resultado.
 
 ---
 
@@ -174,6 +183,7 @@
 - Busca en la KB de ServiceNow (RAG).
 - Extrae la respuesta exacta.
 - Explica el procedimiento paso a paso en el chat.
+- Registra el **hit rate de RAG** en telemetría.
 
 ---
 
@@ -192,6 +202,7 @@
 - Envía notificación push (Slack/Teams/WhatsApp).
 - El ticket queda en estado `awaiting_approval`.
 - Al aprobar/rechazar, el flujo continúa.
+- Registra el evento de aprobación en telemetría.
 
 ---
 
@@ -226,6 +237,7 @@
 - Transfiere el caso al Workspace de ServiceNow.
 - Entrega un resumen ejecutivo del diagnóstico.
 - El agente humano recibe el contexto completo.
+- Registra el evento de escalación en telemetría.
 
 ---
 
@@ -260,6 +272,7 @@
 - Corre sin credenciales de ServiceNow/AD/notificaciones.
 - Reproduce el flujo completo de forma determinista.
 - Permite probar todas las intenciones.
+- Genera telemetría de demo para poblar el dashboard.
 
 ---
 
@@ -277,6 +290,225 @@
 - El LLM se abstrae detrás de una interfaz única.
 - Se configura vía `LLM_PROVIDER` (`jan` | `openai` | `mock`).
 - El sistema funciona con cualquiera de los tres.
+- La telemetría es **idéntica** sin importar el proveedor (modelo-agnóstica).
+
+---
+
+### HU-016 · Telemetría JSON estandarizada (modelo-agnóstica)
+**Como** desarrollador/operador, **quiero** que el sistema emita eventos JSON estandarizados (traces, spans, LLM calls, conversaciones, RAG, aprobaciones, escalaciones), **para** tener observabilidad consistente sin importar el proveedor LLM.
+
+- **I**ndependiente: sí.
+- **N**egociable: esquema de eventos.
+- **V**aliosa: observabilidad consistente y portable.
+- **E**stimable: 5 pts.
+- **S**mall: una capa de telemetría.
+- **T**estable: verificar eventos JSON en el log.
+
+**Criterios de aceptación:**
+- Emite eventos JSONL estandarizados para cada tipo de actividad.
+- Funciona igual con OpenAI, Jan o Mock.
+- Incluye latencia, tokens, costo y estado en cada llamada LLM.
+- Permite alimentar herramientas de observabilidad (ELK, Datadog, Langfuse).
+
+---
+
+### HU-017 · Dashboard de 4 dimensiones
+**Como** operador/gestor, **quiero** ver un dashboard con métricas en 4 dimensiones (Negocio/Operación, Rendimiento/IA, Costos, Orquestación), **para** tener control total del sistema.
+
+- **I**ndependiente: sí.
+- **N**egociable: métricas y layout.
+- **V**aliosa: control total y toma de decisiones.
+- **E**stimable: 8 pts.
+- **S**mall: un dashboard.
+- **T**estable: verificar que las métricas se calculan correctamente.
+
+**Criterios de aceptación:**
+- **Negocio/Operación**: FCR, deflexión, distribución de intenciones, MTTR.
+- **Rendimiento/IA**: E2E latency, tiempo por agente, TTFT, RAG hit rate.
+- **Costos**: costo por conversación, tokens input/output, costo total USD.
+- **Orquestación**: tasa de escalación, awaiting_approval, abandono.
+- Accesible desde el frontend (pestaña Dashboard) y en `/dashboard`.
+
+---
+
+### HU-018 · Dashboard integrado al frontend
+**Como** usuario, **quiero** ver el dashboard de métricas dentro del mismo frontend del asistente, **para** consultar el estado del sistema sin cambiar de aplicación.
+
+- **I**ndependiente: sí.
+- **N**egociable: layout de pestañas.
+- **V**aliosa: acceso unificado a chat y métricas.
+- **E**stimable: 3 pts.
+- **S**mall: una pestaña en el frontend.
+- **T**estable: alternar entre Chat y Dashboard.
+
+**Criterios de aceptación:**
+- El frontend tiene pestañas **Chat** y **Dashboard**.
+- El dashboard se carga con datos reales del backend.
+- Se actualiza con un botón de refresco.
+
+---
+
+### HU-019 · Agente de Métricas (dashboard vía multiagente)
+**Como** usuario, **quiero** preguntarle al asistente por métricas, KPIs y estado del sistema en lenguaje natural, **para** obtener el dashboard a través del multiagente.
+
+- **I**ndependiente: sí.
+- **N**egociable: alcance de las consultas.
+- **V**aliosa: acceso conversacional a las métricas.
+- **E**stimable: 3 pts.
+- **S**mall: un agente de métricas.
+- **T**estable: preguntar por métricas y verificar respuesta.
+
+**Criterios de aceptación:**
+- El Coordinador detecta consultas de métricas (dashboard, KPI, FCR, MTTR, costos, etc.).
+- El Agente de Métricas devuelve un resumen en lenguaje natural.
+- Incluye las 4 dimensiones en la respuesta.
+- Indica cómo ver el dashboard completo.
+
+---
+
+### HU-020 · Logging estructurado (JSON)
+**Como** desarrollador/operador, **quiero** que el sistema registre logs estructurados en JSON con contexto por conversación/traza, **para** diagnosticar problemas y correlacionar eventos.
+
+- **I**ndependiente: sí.
+- **N**egociable: formato y niveles.
+- **V**aliosa: diagnóstico y trazabilidad.
+- **E**stimable: 3 pts.
+- **S**mall: una capa de logging.
+- **T**estable: verificar logs JSON con contexto.
+
+**Criterios de aceptación:**
+- Emite logs JSON de una línea por evento.
+- Incluye niveles de severidad (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+- Añade contexto (conversation_id, trace_id, agent, intent).
+- Rotación de archivos (5 MB × 5 backups).
+
+---
+
+### HU-021 · Control de errores y reintentos
+**Como** desarrollador, **quiero** que el sistema maneje errores con excepciones tipadas, reintentos con backoff y degradación elegante, **para** mejorar la robustez y el mantenimiento.
+
+- **I**ndependiente: sí.
+- **N**egociable: políticas de reintento.
+- **V**aliosa: robustez y resiliencia.
+- **E**stimable: 3 pts.
+- **S**mall: una capa de errores.
+- **T**estable: simular fallos y verificar manejo.
+
+**Criterios de aceptación:**
+- Excepciones jerárquicas (LLMOpsError y subtipos).
+- Reintentos con backoff exponencial + jitter para errores transitorios.
+- Degradación elegante con `safe_call` para pasos no críticos.
+- Fail-fast para errores de configuración.
+
+---
+
+### HU-022 · Guardrails de entrada y salida
+**Como** operador, **quiero** que el sistema valide entradas y salidas (longitud, anti inyección de prompt, intención/prioridad válidas), **para** proteger el sistema contra abusos y errores.
+
+- **I**ndependiente: sí.
+- **N**egociable: reglas de validación.
+- **V**aliosa: seguridad y calidad.
+- **E**stimable: 3 pts.
+- **S**mall: una capa de guardrails.
+- **T**estable: enviar entradas maliciosas y verificar rechazo.
+
+**Criterios de aceptación:**
+- Rechaza mensajes que exceden la longitud máxima.
+- Detecta intentos de inyección de prompt.
+- Valida intención y prioridad en las salidas.
+- Aplica el patrón Chain of Responsibility.
+
+---
+
+### HU-023 · Gestión y versionado de prompts
+**Como** desarrollador, **quiero** centralizar y versionar los prompts del sistema, **para** mantenerlos, experimentar (A/B) y hacer rollback.
+
+- **I**ndependiente: sí.
+- **N**egociable: esquema de versionado.
+- **V**aliosa: mantenibilidad y experimentación.
+- **E**stimable: 3 pts.
+- **S**mall: un registro de prompts.
+- **T**estable: registrar, renderizar y versionar prompts.
+
+**Criterios de aceptación:**
+- Registro central de prompts (PromptRegistry).
+- Versionado semver con huella SHA-256.
+- Renderizado parametrizado con variables.
+- Exportación del registro.
+
+---
+
+### HU-024 · Evaluación de salidas de agentes
+**Como** desarrollador, **quiero** evaluar la calidad de las salidas de los agentes (checks deterministas, LLM-as-judge), **para** detectar regresiones al cambiar prompts o modelos.
+
+- **I**ndependiente: sí.
+- **N**egociable: estrategias de evaluación.
+- **V**aliosa: calidad y detección de regresiones.
+- **E**stimable: 3 pts.
+- **S**mall: un marco de evaluación.
+- **T**estable: ejecutar evaluaciones y verificar resultados.
+
+**Criterios de aceptación:**
+- Checks deterministas (esquema JSON, intención válida, prioridad válida).
+- Extensible a LLM-as-judge.
+- Reporte de tasa de aprobación.
+- Registro de resultados en telemetría.
+
+---
+
+### HU-025 · Integración con Langfuse (observabilidad LLM nativa)
+**Como** operador, **quiero** integrar Langfuse (opcional, una línea de código) para registrar latencias por sub-agente, árboles de ejecución y costos automáticos, **para** tener observabilidad LLM nativa.
+
+- **I**ndependiente: sí.
+- **N**egociable: plataforma de observabilidad.
+- **V**aliosa: observabilidad LLM nativa.
+- **E**stimable: 3 pts.
+- **S**mall: una integración opcional.
+- **T**estable: configurar Langfuse y verificar envío.
+
+**Criterios de aceptación:**
+- Se integra con una línea de código.
+- Registra latencias por sub-agente.
+- Muestra árboles de ejecución detallados.
+- Calcula costos automáticamente sin importar el modelo.
+- Funciona sin Langfuse (degradación elegante).
+
+---
+
+### HU-026 · Patrones de diseño para mantenibilidad
+**Como** desarrollador, **quiero** que el sistema aplique patrones de diseño (Registry, Strategy, Chain of Responsibility, Facade, Observer), **para** mejorar el mantenimiento y la extensibilidad.
+
+- **I**ndependiente: sí.
+- **N**egociable: patrones aplicados.
+- **V**aliosa: mantenibilidad y extensibilidad.
+- **E**stimable: 3 pts.
+- **S**mall: una capa de patrones.
+- **T**estable: verificar uso de patrones en el código.
+
+**Criterios de aceptación:**
+- Registry para agentes, prompts y estrategias.
+- Strategy para selección de proveedor LLM y agentes.
+- Chain of Responsibility para pipeline y guardrails.
+- Facade para interfaz unificada.
+- Observer (EventBus) para telemetría y notificaciones.
+
+---
+
+### HU-027 · Documentación por fase (LLMOps) en español
+**Como** desarrollador/operador, **quiero** tener documentación de cada fase del ciclo de vida LLMOps en español, **para** mantener y operar el sistema con buenas prácticas.
+
+- **I**ndependiente: sí.
+- **N**egociable: estructura de la documentación.
+- **V**aliosa: mantenibilidad y transferencia de conocimiento.
+- **E**stimable: 3 pts.
+- **S**mall: documentación por fase.
+- **T**estable: verificar que cada fase está documentada.
+
+**Criterios de aceptación:**
+- Documentación de 7 fases (Planificación, Datos/Prompts, Desarrollo, Evaluación, Observabilidad, Despliegue, Guardrails).
+- Todo en español.
+- Índice general con enlaces.
+- Referenciada desde el README.
 
 ---
 
@@ -299,5 +531,17 @@
 | HU-013 | Integración con Jan | Media | 3 |
 | HU-014 | Modo demo sin credenciales | Alta | 2 |
 | HU-015 | Modelo-agnóstico | Media | 3 |
+| HU-016 | Telemetría JSON estandarizada | Alta | 5 |
+| HU-017 | Dashboard de 4 dimensiones | Alta | 8 |
+| HU-018 | Dashboard integrado al frontend | Media | 3 |
+| HU-019 | Agente de Métricas (vía multiagente) | Media | 3 |
+| HU-020 | Logging estructurado (JSON) | Alta | 3 |
+| HU-021 | Control de errores y reintentos | Alta | 3 |
+| HU-022 | Guardrails de entrada y salida | Alta | 3 |
+| HU-023 | Gestión y versionado de prompts | Media | 3 |
+| HU-024 | Evaluación de salidas de agentes | Media | 3 |
+| HU-025 | Integración con Langfuse | Media | 3 |
+| HU-026 | Patrones de diseño | Media | 3 |
+| HU-027 | Documentación por fase (LLMOps) | Media | 3 |
 
-**Total estimado:** ~50 puntos · **15 historias** · **1 épica**
+**Total estimado:** ~90 puntos · **27 historias** · **1 épica** · **Versión 2.0**
