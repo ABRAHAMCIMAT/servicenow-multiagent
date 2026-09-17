@@ -8,6 +8,7 @@ manejando aprobaciones y escalaciones. Es el punto de entrada único.
 from __future__ import annotations
 
 from ..core.llm import LLM
+from ..llmops.logging import get_logger
 from ..core.models import Conversation, Intent, Ticket
 from ..adapters.servicenow import ServiceNowAdapter
 from ..adapters.notifications import NotificationAdapter
@@ -16,6 +17,9 @@ from .diagnostic import DiagnosticAgent
 from .policy import PolicyAgent
 from .execution import ExecutionAgent
 from .knowledge import KnowledgeAgent
+
+
+log = get_logger("agente.coordinador")
 
 
 class CoordinatorAgent:
@@ -30,6 +34,7 @@ class CoordinatorAgent:
         self.knowledge = KnowledgeAgent(llm, snow)
 
     def handle(self, user_message: str, caller: str = "Usuario") -> Conversation:
+        log.info("conversación iniciada", extra={"caller": caller, "user_message": user_message[:100]})
         conv = Conversation(user_message=user_message)
         conv.add("coordinador", "🤖 Recibí tu solicitud. Voy a analizarla y enrutarla al agente adecuado.")
 
@@ -74,6 +79,7 @@ class CoordinatorAgent:
                                 "responder preguntas de la base de conocimientos, gestionar "
                                 "solicitudes y aprobaciones.")
         conv.status = "resolved"
+        log.info("conversación resuelta", extra={"conversation_id": conv.id, "status": conv.status})
         return conv
 
     # -- knowledge ----------------------------------------------------------
