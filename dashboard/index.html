@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard · ServiceNow Multi-Agent</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #1a1d27; --panel2: #222634; --border: #2c3142;
+    --text: #e6e8ef; --muted: #8b90a3; --accent: #4f8cff; --green: #34d399;
+    --red: #f87171; --amber: #fbbf24; --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .badge { background: var(--panel2); border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; font-size: 12px; color: var(--muted); }
+  .grid { display: grid; gap: 16px; }
+  .kpis { grid-template-columns: repeat(4, 1fr); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .panel h3 { font-size: 13px; color: var(--muted); font-weight: 500; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .kpi .value { font-size: 30px; font-weight: 700; }
+  .kpi .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .kpi .delta { font-size: 12px; margin-top: 6px; }
+  .up { color: var(--green); } .down { color: var(--red); } .warn { color: var(--amber); }
+  .mid { grid-template-columns: 1fr 1fr; }
+  .chart-wrap { position: relative; height: 260px; }
+  .metric-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .metric-row:last-child { border-bottom: none; }
+  .metric-row .m { color: var(--muted); }
+  .metric-row .v { font-weight: 600; }
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+  .flow .node { background: var(--panel2); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; }
+  .flow .arrow { color: var(--muted); }
+  .flow .node.hot { border-color: var(--accent); color: var(--accent); }
+  .footer { margin-top: 20px; color: var(--muted); font-size: 12px; text-align: center; }
+  .refresh { background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .refresh:hover { opacity: .9; }
+  @media (max-width: 900px) { .kpis, .mid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>📊 Dashboard · ServiceNow Multi-Agent</h1>
+    <div class="sub" id="subtitle">Cargando métricas…</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span class="badge" id="provider-badge">—</span>
+    <button class="refresh" onclick="load()">↻ Actualizar</button>
+  </div>
+</header>
+
+<!-- KPIs principales -->
+<div class="grid kpis">
+  <div class="panel kpi"><div class="value" id="k-total">—</div><div class="label">Total de Interacciones</div></div>
+  <div class="panel kpi"><div class="value" id="k-mttr">—</div><div class="label">MTTR (seg)</div></div>
+  <div class="panel kpi"><div class="value" id="k-cost">—</div><div class="label">Costos Hoy (USD)</div></div>
+  <div class="panel kpi"><div class="value" id="k-awaiting">—</div><div class="label">Tickets en awaiting_approval</div></div>
+</div>
+
+<!-- Flujo operativo + Métricas IA -->
+<div class="grid mid" style="margin-top:16px">
+  <div class="panel">
+    <h3>Flujo Operativo · Distribución de Intenciones</h3>
+    <div class="chart-wrap"><canvas id="chart-intents"></canvas></div>
+  </div>
+  <div class="panel">
+    <h3>Métricas de IA · Latencia por Agente (ms)</h3>
+    <div class="chart-wrap"><canvas id="chart-latency"></canvas></div>
+  </div>
+</div>
+
+<!-- Costos + Orquestación -->
+<div class="grid mid" style="margin-top:16px">
+  <div class="panel">
+    <h3>Costos y Consumo</h3>
+    <div id="costs-body"><div class="metric-row"><span class="m">Cargando…</span></div></div>
+  </div>
+  <div class="panel">
+    <h3>Orquestación y Ciclo de Vida</h3>
+    <div id="orch-body"><div class="metric-row"><span class="m">Cargando…</span></div></div>
+  </div>
+</div>
+
+<!-- Monitoreo de flujo -->
+<div class="panel" style="margin-top:16px">
+  <h3>Monitoreo de Flujo · Viaje del Usuario</h3>
+  <div class="flow" id="flow"></div>
+</div>
+
+<div class="footer" id="footer">—</div>
+
+<script>
+let intentChart, latencyChart;
+
+async function load() {
+  try {
+    const res = await fetch('/api/dashboard');
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    document.getElementById('subtitle').textContent = 'No se pudo conectar al backend. Ejecuta backend/server.py';
+  }
+}
+
+function render(data) {
+  const d = data.dimensions;
+  const b = d.business, p = d.performance, c = d.costs, o = d.orchestration;
+  document.getElementById('subtitle').textContent = 'Actualizado: ' + new Date(data.generated_at).toLocaleString();
+  document.getElementById('provider-badge').textContent = 'Eventos: ' + data.event_count;
+
+  // KPIs
+  document.getElementById('k-total').textContent = b.total_interactions;
+  document.getElementById('k-mttr').textContent = b.mttr_seconds + 's';
+  document.getElementById('k-cost').textContent = '$' + c.total_cost_usd.toFixed(2);
+  document.getElementById('k-awaiting').textContent = o.awaiting_approval_count;
+
+  // Intents pie
+  const intents = b.intent_distribution || {};
+  const labels = Object.keys(intents), vals = Object.values(intents);
+  if (intentChart) intentChart.destroy();
+  intentChart = new Chart(document.getElementById('chart-intents'), {
+    type: 'pie',
+    data: { labels, datasets: [{ data: vals, backgroundColor: ['#4f8cff','#34d399','#fbbf24','#a78bfa','#f87171','#8b90a3'] }] },
+    options: { plugins: { legend: { labels: { color: '#e6e8ef' } } } }
+  });
+
+  // Latency bar
+  const agents = Object.keys(p.agent_latency_ms || {});
+  const latVals = Object.values(p.agent_latency_ms || {});
+  if (latencyChart) latencyChart.destroy();
+  latencyChart = new Chart(document.getElementById('chart-latency'), {
+    type: 'bar',
+    data: { labels: agents, datasets: [{ label: 'ms', data: latVals, backgroundColor: '#4f8cff' }] },
+    options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#8b90a3' } }, y: { ticks: { color: '#8b90a3' } } } }
+  });
+
+  // Costs
+  const costRows = [
+    ['Costo total (USD)', '$' + c.total_cost_usd.toFixed(4)],
+    ['Costo por conversación', '$' + c.cost_per_conversation_usd.toFixed(4)],
+    ['Tokens totales', c.total_tokens],
+    ['Input / Output', c.prompt_tokens + ' / ' + c.completion_tokens],
+    ['Llamadas LLM', c.llm_calls],
+  ];
+  document.getElementById('costs-body').innerHTML = costRows.map(r =>
+    `<div class="metric-row"><span class="m">${r[0]}</span><span class="v">${r[1]}</span></div>`).join('');
+
+  // Orchestration
+  const orchRows = [
+    ['Tasa de escalación', o.escalation_rate + '% (' + o.escalation_count + ')'],
+    ['Resúmenes ejecutivos enviados', o.escalation_summary_sent],
+    ['En espera de aprobación', o.awaiting_approval_count],
+    ['Tasa de abandono', o.abandonment_rate + '% (' + o.abandonment_count + ')'],
+    ['Solicitudes de aprobación', o.approval_requests],
+  ];
+  document.getElementById('orch-body').innerHTML = orchRows.map(r =>
+    `<div class="metric-row"><span class="m">${r[0]}</span><span class="v">${r[1]}</span></div>`).join('');
+
+  // Flow
+  const flow = ['Usuario','Triaje','Diagnóstico','Políticas','Ejecución','Resuelto'];
+  document.getElementById('flow').innerHTML = flow.map((n,i) =>
+    `<span class="node ${i===1?'hot':''}">${n}</span>${i<flow.length-1?'<span class="arrow">→</span>':''}`).join('');
+}
+
+load();
+</script>
+</body>
+</html>
