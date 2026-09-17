@@ -1,11 +1,13 @@
 """
 API Server — punto de entrada del sistema multiagente.
 
-Expone dos interfaces:
-  1. REST API propia (/api/chat, /api/conversations, /api/health) para el
-     frontend web incluido.
+Expone tres interfaces:
+  1. REST API propia (/api/chat, /api/conversations, /api/health, /api/dashboard)
+     para el frontend web incluido y el dashboard de observabilidad.
   2. Endpoint compatible con OpenAI (/v1/chat/completions) para que Jan
      (o cualquier cliente OpenAI) pueda conectarse como proveedor.
+  3. Dashboard de métricas en 4 dimensiones (Negocio, Rendimiento, Costos,
+     Orquestación) alimentado por telemetría JSON estandarizada.
 
 Ejecutar:  python backend/server.py   (puerto 8000 por defecto)
 """
@@ -18,6 +20,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .core.llm import LLM
@@ -26,8 +29,12 @@ from .adapters.servicenow import ServiceNowAdapter
 from .adapters.notifications import NotificationAdapter
 from .agents.coordinator import CoordinatorAgent
 from .agents.escalation import EscalationAgent
+from .observability.telemetry import Telemetry, get_telemetry
+from .observability.traced_coordinator import TracedCoordinator
+from .observability.metrics import MetricsEngine
+from .observability.dashboard_api import build_dashboard_payload
 
-app = FastAPI(title="ServiceNow Multi-Agent System", version="1.0.0")
+app = FastAPI(title="ServiceNow Multi-Agent System", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +51,11 @@ coordinator = CoordinatorAgent(llm, snow, notifier)
 escalator = EscalationAgent(llm, snow)
 store = ConversationStore(persist_path=os.getenv("CONV_STORE", "/agent/task/servicenow-multiagent/backend/data/conversations.json"))
 
+# --- observability ---------------------------------------------------------
+telemetry = get_telemetry()
+traced = TracedCoordinator(coordinator, telemetry)
+metrics_engine = MetricsEngine()
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -55,6 +67,12 @@ class EscalateRequest(BaseModel):
     conversation_id: str
 
 
+
+# --- Dashboard static files ------------------------------------------------
+_dashboard_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dashboard")
+if os.path.isdir(_dashboard_dir):
+    app.mount("/dashboard", StaticFiles(directory=_dashboard_dir, html=True), name="dashboard")
+
 # --- REST API (frontend) ---------------------------------------------------
 @app.get("/api/health")
 def health():
@@ -64,12 +82,14 @@ def health():
         "llm_model": llm.config.model,
         "servicenow_mode": "live" if snow.live else "demo",
         "notification_channel": notifier.channel,
+        "observability": "enabled",
+        "langfuse": "enabled" if telemetry.langfuse else "disabled",
     }
 
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
-    conv = coordinator.handle(req.message, caller=req.caller)
+    conv = traced.handle(req.message, caller=req.caller)
     store.update(conv)
     return conv.to_dict()
 
@@ -99,6 +119,19 @@ def escalate(req: EscalateRequest):
     return result
 
 
+# --- Dashboard API ---------------------------------------------------------
+@app.get("/api/dashboard")
+def dashboard():
+    """Four-dimension metrics for the observability dashboard."""
+    return build_dashboard_payload(metrics_engine)
+
+
+@app.get("/api/dashboard/events")
+def dashboard_events():
+    """Raw standardized telemetry events (for debugging / Langfuse export)."""
+    return telemetry.events()
+
+
 # --- OpenAI-compatible endpoint (for Jan) ----------------------------------
 class OpenAIRequest(BaseModel):
     model: str = "servicenow-multiagent"
@@ -113,7 +146,7 @@ async def openai_compat(req: OpenAIRequest):
     for m in req.messages:
         if m.get("role") == "user":
             user_msg = m.get("content", "")
-    conv = coordinator.handle(user_msg)
+    conv = traced.handle(user_msg)
     store.update(conv)
 
     # Build a coherent assistant reply from the agent trace
@@ -154,5 +187,7 @@ if __name__ == "__main__":
     print(f"ServiceNow Multi-Agent API en http://localhost:{port}")
     print(f"  LLM: {llm.config.provider} ({llm.config.model})")
     print(f"  ServiceNow: {'LIVE' if snow.live else 'DEMO'}")
+    print(f"  Observabilidad: telemetría JSON + Langfuse ({'ON' if telemetry.langfuse else 'OFF'})")
+    print(f"  Dashboard: http://localhost:{port}/dashboard")
     print(f"  Endpoint OpenAI-compatible (para Jan): http://localhost:{port}/v1/chat/completions")
     uvicorn.run(app, host="0.0.0.0", port=port)
