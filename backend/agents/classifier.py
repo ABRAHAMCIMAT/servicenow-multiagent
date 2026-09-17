@@ -1,15 +1,29 @@
 """
-Agent 1 — Clasificador / Triaje / Enrutamiento Inteligente.
+Agente 1 — Clasificador / Triaje / Enrutamiento Inteligente.
 
 Analiza el texto libre del usuario en lenguaje natural, identifica la
 verdadera intención, asigna categoría/subcategoría/Assignment Group y
 calcula la prioridad (SLA) a partir de impacto, urgencia, sentimiento y
 palabras clave. Sin intervención humana.
+
+Mejores prácticas LLMOps aplicadas:
+  - Guardrails de entrada (longitud, inyección de prompt).
+  - Gestión de prompts versionados (PromptRegistry).
+  - Evaluación de salida (esquema JSON, intención válida).
+  - Logging estructurado con contexto.
+  - Manejo de errores con degradación elegante (fallback heurístico).
 """
 from __future__ import annotations
 
 from ..core.llm import LLM
 from ..core.models import Classification, Intent, Priority
+from ..llmops.logging import get_logger
+from ..llmops.guardrails import default_guardrails
+from ..llmops.prompts import registry
+from ..llmops.evals import Evaluator, check_json_schema, check_intent_valid
+from ..llmops.errors import safe_call
+
+log = get_logger("agente.clasificador")
 
 SYSTEM_PROMPT = """Eres el Agente Clasificador de un sistema de soporte de TI (ServiceNow).
 Tu tarea es analizar el mensaje del usuario y devolver SOLO un JSON con esta estructura exacta:
@@ -38,13 +52,40 @@ Si el usuario expresa frustración, urgencia o palabras como "urgente", "no pued
 class ClassifierAgent:
     def __init__(self, llm: LLM):
         self.llm = llm
+        self.evaluator = Evaluator()
+        self.evaluator.register("json_schema", lambda o: check_json_schema(o, [
+            "intent", "category", "priority", "confidence"]))
+        self.evaluator.register("intent_valid", check_intent_valid)
 
     def classify(self, user_message: str) -> Classification:
+        # Guardrail de entrada
         try:
-            data = self.llm.chat_json(SYSTEM_PROMPT, user_message)
+            user_message = default_guardrails.validate_input(user_message)
+        except Exception as e:
+            log.warning("entrada rechazada en clasificador", extra={"error": str(e)})
+            return Classification(intent=Intent.GENERAL, summary="Entrada no válida.")
+
+        # Prompt versionado desde el registro
+        try:
+            prompt = registry.render("clasificador", user_message=user_message)
         except Exception:
-            # fallback heuristic if LLM unavailable
+            prompt = SYSTEM_PROMPT  # fallback al prompt embebido
+
+        # Llamada LLM con degradación elegante
+        data = safe_call(
+            lambda: self.llm.chat_json(prompt, user_message),
+            default=None,
+            logger=log,
+        )
+        if data is None:
             data = self._heuristic(user_message)
+
+        # Evaluación de salida
+        eval_results = self.evaluator.run(data)
+        log.info("clasificación completada",
+                 extra={"intent": data.get("intent"), "priority": data.get("priority"),
+                        "eval_passed": sum(1 for r in eval_results if r.passed)})
+
         intent = self._parse_intent(data.get("intent"))
         priority = self._parse_priority(data.get("priority"), data.get("impact"), data.get("urgency"))
         return Classification(
@@ -71,7 +112,6 @@ class ClassifierAgent:
     def _parse_priority(self, p, impact, urgency) -> Priority:
         if p and p.upper() in ("P1", "P2", "P3", "P4"):
             return Priority(p.upper())
-        # fallback matrix
         i, u = int(impact or 3), int(urgency or 3)
         if i == 1 and u == 1:
             return Priority.P1
