@@ -1,0 +1,81 @@
+[project]
+name = "servicenow-multiagent"
+version = "2.2.0"
+description = "Sistema multiagente conversacional para ServiceNow (ITSM)"
+requires-python = ">=3.11"
+
+# ---------------------------------------------------------------------------
+# Ruff - lint + formato
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["backend", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "S"]
+ignore = [
+    "E501",   # longitud: la maneja line-length
+    "S101",   # assert permitido en tests
+    "S104",   # bind 0.0.0.0 intencional en contenedor
+    "S105",   # "clave" en tests no es un secreto real
+    "S106",   # passwords de prueba
+    "S108",   # rutas /tmp en tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B011", "SIM117"]
+"backend/security/*" = ["S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
+# ---------------------------------------------------------------------------
+# mypy - tipos estaticos (progresivo en Fase 1)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = ["tests/", "scripts/"]
+
+[[tool.mypy.overrides]]
+module = ["backend.observability.langfuse_integration"]
+ignore_errors = true
+
+# ---------------------------------------------------------------------------
+# pytest - pruebas y cobertura
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "-q"]
+markers = [
+    "unit: pruebas unitarias rapidas",
+    "integration: pruebas de integracion (API, agentes, adaptadores)",
+    "e2e: flujo conversacional completo",
+    "slow: pruebas lentas",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = [
+    "backend/observability/langfuse_integration.py",
+    "*/__init__.py",
+]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 70
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

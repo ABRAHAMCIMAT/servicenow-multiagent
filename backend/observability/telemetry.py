@@ -30,6 +30,26 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+# Campos que pueden contener texto de usuario o de agentes. Se redactan de
+# forma recursiva (dicts y listas incluidos): los agentes anidan contenido en
+# `metadata`, `input` y `output`, no solo en el primer nivel del evento.
+_CONTENT_FIELDS = (
+    "message", "user_message", "query", "content", "text",
+    "metadata", "input", "output",
+)
+
+
+def _redact_deep(value):
+    """Aplica redact_text a cualquier cadena, recursivamente en dicts/listas."""
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        return {k: _redact_deep(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_deep(v) for v in value]
+    return value
+
+
 class Telemetry:
     """Collects standardized JSON events and forwards to Langfuse if configured."""
 
@@ -45,10 +65,12 @@ class Telemetry:
         event.setdefault("ts", _now_iso())
         event.setdefault("ts_ms", _now_ms())
         event.setdefault("event_id", uuid.uuid4().hex[:12])
-        # Fase 0: redactar cualquier campo de texto libre antes de persistir
-        for _k in ("message", "user_message", "query", "content", "text"):
-            if isinstance(event.get(_k), str):
-                event[_k] = redact_text(event[_k])
+        # Fase 0: redactar PII en campos con contenido, de forma RECURSIVA.
+        # Los agentes y el trazador anidan texto en metadata/input/output, asi
+        # que una redaccion solo de primer nivel dejaba escapar PII a disco.
+        for _k in _CONTENT_FIELDS:
+            if _k in event:
+                event[_k] = _redact_deep(event[_k])
         self._events.append(event)
         # Fase 0: ring buffer para evitar fuga de memoria en procesos largos
         max_events = int(os.getenv("TELEMETRY_MAX_EVENTS", "5000"))

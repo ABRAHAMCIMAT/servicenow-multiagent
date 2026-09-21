@@ -71,8 +71,8 @@ def check_max_length(max_len: int = 2000) -> Callable[[str], Optional[str]]:
 def check_prompt_injection() -> Callable[[str], Optional[str]]:
     """Detecta intentos de inyección de prompt."""
     patterns = [
-        r"ignora\s+(las\s+)?instrucciones",
-        r"ignore\s+(the\s+)?instructions",
+        r"ignora\s+(todas\s+las\s+)?(las\s+)?instrucciones",
+        r"ignore\s+(all\s+)?(previous\s+)?(the\s+)?instructions",
         r"system\s*:\s*",
         r"eres\s+ahora\s+",
         r"you\s+are\s+now\s+",

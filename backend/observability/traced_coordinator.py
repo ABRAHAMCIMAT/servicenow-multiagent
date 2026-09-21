@@ -15,6 +15,7 @@ from typing import Any, Optional
 
 from .telemetry import Telemetry
 from .instrument import InstrumentedLLM
+from ..security.redaction import preview
 from ..core.models import Conversation, Intent
 
 
@@ -26,8 +27,12 @@ class TracedCoordinator:
     def handle(self, user_message: str, caller: str = "Usuario") -> Conversation:
         trace_id = uuid.uuid4().hex[:12]
         start = time.time()
-        self._telemetry.start_trace(trace_id, "conversation",
-                                    metadata={"user_message": user_message, "caller": caller})
+        # Fase 0: privacidad primero. preview() omite el contenido del usuario
+        # salvo LOG_USER_CONTENT=true (y entonces lo redacta).
+        self._telemetry.start_trace(
+            trace_id, "conversation",
+            metadata={"user_message": preview(user_message), "caller": caller},
+        )
 
         # Instrument the LLM so every agent's LLM call is traced
         coord = self._coord

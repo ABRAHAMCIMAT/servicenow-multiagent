@@ -7,6 +7,8 @@ solo enviar un enlace.
 """
 from __future__ import annotations
 
+import re
+
 from ..core.llm import LLM
 from ..core.models import Conversation
 
@@ -44,9 +46,18 @@ class KnowledgeAgent:
         }
 
     def _extract_steps(self, content: str) -> list[str]:
+        """Extrae los pasos del articulo.
+
+        Soporta listas con un paso por linea y listas numeradas en linea
+        (el corpus demo describe los pasos dentro de un unico parrafo).
+        """
         steps = []
         for line in content.split("\n"):
             line = line.strip()
             if line and (line[0].isdigit() or line.startswith("-") or line.startswith("•")):
                 steps.append(line.lstrip("0123456789.)-• ").strip())
-        return steps
+        if steps:
+            return steps
+        # Lista numerada dentro de un parrafo: "1) paso uno 2) paso dos"
+        return [m.strip() for m in re.findall(r"\d+[.)]\s*(.+?)(?=\s*\d+[.)]\s|$)", content, re.S)
+                if m.strip()]

@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import re
 
+# El ORDEN importa: los patrones especificos se evaluan antes que el generico
+# de telefono (voraz), de lo contrario una tarjeta, una IPv4 o un SSN se
+# etiquetarian como "phone". Regresion cubierta en tests/unit/test_security_redaction.py
 _PATTERNS = [
     ("email", re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")),
-    ("phone", re.compile(r"(?<!\d)(?:\+?\d[\d\s().-]{7,}\d)(?!\d)")),
+    ("ssn", re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")),
     ("card", re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")),
     ("ipv4", re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")),
-    ("ssn", re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")),
+    ("phone", re.compile(r"(?<!\d)(?:\+?\d[\d\s().-]{7,}\d)(?!\d)")),
 ]
 
 _PLACEHOLDER = "[REDACTED:{kind}]"
