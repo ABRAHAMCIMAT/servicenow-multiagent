@@ -8,10 +8,11 @@ legible en lenguaje natural. También puede indicar la URL del dashboard.
 Mejores prácticas LLMOps: logging estructurado, manejo de errores con
 degradación elegante.
 """
+
 from __future__ import annotations
 
-from ..llmops.logging import get_logger
 from ..llmops.errors import safe_call
+from ..llmops.logging import get_logger
 from ..observability.metrics import MetricsEngine
 
 log = get_logger("agente.metricas")
@@ -39,20 +40,20 @@ class MetricsAgent:
         lines = [
             "📊 **Dashboard de Observabilidad**",
             "",
-            f"**Negocio/Operación (ITSM):**",
+            "**Negocio/Operación (ITSM):**",
             f"  • Interacciones: {b['total_interactions']}",
             f"  • FCR: {b['fcr_rate']}% · Deflexión: {b['deflection_rate']}%",
             f"  • MTTR: {b['mttr_seconds']}s",
             "",
-            f"**Rendimiento (IA):**",
+            "**Rendimiento (IA):**",
             f"  • Latencia E2E: {p['e2e_latency_seconds']}s · TTFT: {p['ttft_seconds']}s",
             f"  • RAG hit rate: {p['rag_hit_rate']}%",
             "",
-            f"**Costos:**",
+            "**Costos:**",
             f"  • Total: ${c['total_cost_usd']} · Por conversación: ${c['cost_per_conversation_usd']}",
             f"  • Tokens: {c['total_tokens']}",
             "",
-            f"**Orquestación:**",
+            "**Orquestación:**",
             f"  • Escalación: {o['escalation_rate']}% · En espera de aprobación: {o['awaiting_approval_count']}",
             f"  • Abandono: {o['abandonment_rate']}%",
             "",

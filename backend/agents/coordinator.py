@@ -5,21 +5,21 @@ Recibe el mensaje del usuario y orquesta a los agentes especializados:
 Clasificador → Diagnóstico → Políticas → Ejecución / Conocimiento,
 manejando aprobaciones y escalaciones. Es el punto de entrada único.
 """
+
 from __future__ import annotations
 
+from ..adapters.notifications import NotificationAdapter
+from ..adapters.servicenow import ServiceNowAdapter
 from ..core.llm import LLM
+from ..core.models import Conversation, Intent, Ticket
 from ..llmops.logging import get_logger
 from ..security.redaction import preview
-from ..core.models import Conversation, Intent, Ticket
-from ..adapters.servicenow import ServiceNowAdapter
-from ..adapters.notifications import NotificationAdapter
 from .classifier import ClassifierAgent
 from .diagnostic import DiagnosticAgent
-from .policy import PolicyAgent
 from .execution import ExecutionAgent
 from .knowledge import KnowledgeAgent
 from .metrics import MetricsAgent
-
+from .policy import PolicyAgent
 
 log = get_logger("agente.coordinador")
 
@@ -39,8 +39,9 @@ class CoordinatorAgent:
     def handle(self, user_message: str, caller: str = "Usuario") -> Conversation:
         # Fase 0: nunca registrar el mensaje crudo del usuario
         # (preview() lo omite salvo LOG_USER_CONTENT=true)
-        log.info("conversación iniciada",
-                 extra={"caller": caller, "user_message": preview(user_message, 120)})
+        log.info(
+            "conversación iniciada", extra={"caller": caller, "user_message": preview(user_message, 120)}
+        )
         conv = Conversation(user_message=user_message)
         conv.add("coordinador", "🤖 Recibí tu solicitud. Voy a analizarla y enrutarla al agente adecuado.")
 
@@ -67,8 +68,11 @@ class CoordinatorAgent:
                 caller=caller,
             )
             self.snow.create_incident(conv.ticket)
-            conv.add("coordinador", f"🎫 Ticket **{conv.ticket.number}** creado con prioridad {cl.priority.value}.",
-                     data={"ticket": conv.ticket.to_dict()})
+            conv.add(
+                "coordinador",
+                f"🎫 Ticket **{conv.ticket.number}** creado con prioridad {cl.priority.value}.",
+                data={"ticket": conv.ticket.to_dict()},
+            )
 
         # 2) Route by intent
         if cl.intent == Intent.KNOWLEDGE:
@@ -88,9 +92,12 @@ class CoordinatorAgent:
             return conv
 
         # general
-        conv.add("coordinador", "¿En qué más puedo ayudarte? Puedo resolver incidentes, "
-                                "responder preguntas de la base de conocimientos, gestionar "
-                                "solicitudes y aprobaciones.")
+        conv.add(
+            "coordinador",
+            "¿En qué más puedo ayudarte? Puedo resolver incidentes, "
+            "responder preguntas de la base de conocimientos, gestionar "
+            "solicitudes y aprobaciones.",
+        )
         conv.status = "resolved"
         log.info("conversación resuelta", extra={"conversation_id": conv.id, "status": conv.status})
         return conv
@@ -99,8 +106,11 @@ class CoordinatorAgent:
     def _handle_knowledge(self, conv: Conversation) -> Conversation:
         result = self.knowledge.answer(conv)
         if result["found"]:
-            conv.add("conocimiento", f"📚 **{result['title']}** ({result['article_id']})\n\n{result['answer']}",
-                     data=result)
+            conv.add(
+                "conocimiento",
+                f"📚 **{result['title']}** ({result['article_id']})\n\n{result['answer']}",
+                data=result,
+            )
             conv.status = "resolved"
         else:
             conv.add("conocimiento", result["message"], data=result)
@@ -110,12 +120,15 @@ class CoordinatorAgent:
     # -- status -------------------------------------------------------------
     def _handle_status(self, conv: Conversation) -> Conversation:
         # find most recent ticket for caller
-        tickets = [t for t in self.snow._tickets.values()] if hasattr(self.snow, "_tickets") else []
+        tickets = list(self.snow._tickets.values()) if hasattr(self.snow, "_tickets") else []
         if tickets:
             t = tickets[-1]
-            conv.add("seguimiento", f"📊 Tu ticket **{t.number}** está en estado **{t.state}** "
-                                    f"(prioridad {t.priority.value}). {t.work_notes[-1] if t.work_notes else 'Sin notas adicionales.'}",
-                     data={"ticket": t.to_dict()})
+            conv.add(
+                "seguimiento",
+                f"📊 Tu ticket **{t.number}** está en estado **{t.state}** "
+                f"(prioridad {t.priority.value}). {t.work_notes[-1] if t.work_notes else 'Sin notas adicionales.'}",
+                data={"ticket": t.to_dict()},
+            )
         else:
             conv.add("seguimiento", "No encontré tickets activos para tu usuario.", data={})
         conv.status = "resolved"
@@ -125,8 +138,7 @@ class CoordinatorAgent:
     def _handle_resolution(self, conv: Conversation) -> Conversation:
         # 2) Diagnóstico
         diag = self.diagnostic.diagnose(conv)
-        conv.add("diagnostico", f"🔍 Diagnóstico: {diag['root_cause']}",
-                 data=diag)
+        conv.add("diagnostico", f"🔍 Diagnóstico: {diag['root_cause']}", data=diag)
 
         action = diag.get("recommended_action", "escalate")
 
@@ -141,8 +153,9 @@ class CoordinatorAgent:
         result = self.execution.execute(conv, action)
         conv.add("ejecucion", f"✅ {result.get('message', 'Acción ejecutada.')}", data=result)
         if conv.ticket:
-            self.snow.update_incident(conv.ticket, {"state": "Resolved",
-                                                    "resolution_notes": result.get("message", "")})
+            self.snow.update_incident(
+                conv.ticket, {"state": "Resolved", "resolution_notes": result.get("message", "")}
+            )
             conv.add("coordinador", f"🎫 Ticket **{conv.ticket.number}** resuelto y cerrado.")
         conv.status = "resolved"
         return conv
@@ -159,19 +172,37 @@ class CoordinatorAgent:
         notif = self.notifier.send_approval_request(
             mgr_name, resource, conv.ticket.number if conv.ticket else "N/A"
         )
-        conv.add("coordinador",
-                 f"⏳ La solicitud de **{resource}** requiere aprobación de **{mgr_name}**. "
-                 f"Se envió la notificación por {notif.get('channel', 'Slack')}. "
-                 f"Te avisaré cuando se procese.",
-                 data={"approval": notif, "manager": mgr_name, "resource": resource})
+        conv.add(
+            "coordinador",
+            f"⏳ La solicitud de **{resource}** requiere aprobación de **{mgr_name}**. "
+            f"Se envió la notificación por {notif.get('channel', 'Slack')}. "
+            f"Te avisaré cuando se procese.",
+            data={"approval": notif, "manager": mgr_name, "resource": resource},
+        )
         conv.status = "awaiting_approval"
         return conv
 
     def _is_metrics_query(self, msg: str) -> bool:
         m = msg.lower()
-        keywords = ["dashboard", "métrica", "metrica", "kpi", "estadística", "estadistica",
-                    "rendimiento", "fcr", "mttr", "costo", "costos", "tokens",
-                    "escalación", "escalacion", "abandono", "observabilidad", "monitoreo"]
+        keywords = [
+            "dashboard",
+            "métrica",
+            "metrica",
+            "kpi",
+            "estadística",
+            "estadistica",
+            "rendimiento",
+            "fcr",
+            "mttr",
+            "costo",
+            "costos",
+            "tokens",
+            "escalación",
+            "escalacion",
+            "abandono",
+            "observabilidad",
+            "monitoreo",
+        ]
         return any(k in m for k in keywords)
 
     def _resource_for(self, action: str, msg: str) -> str:

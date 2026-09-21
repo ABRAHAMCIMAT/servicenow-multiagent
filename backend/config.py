@@ -6,6 +6,7 @@ relativas a DATA_DIR, configurable por variable de entorno. Tambien valida
 la configuracion critica al arranque (fail-fast): CORS obligatorio y sin
 comodines en produccion.
 """
+
 from __future__ import annotations
 
 import os

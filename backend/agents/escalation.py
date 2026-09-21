@@ -6,6 +6,7 @@ caso a un agente humano en el Workspace de ServiceNow, entregándole un
 resumen ejecutivo del diagnóstico previo para que el técnico no tenga que
 hacer las mismas preguntas desde el principio.
 """
+
 from __future__ import annotations
 
 from ..core.llm import LLM
@@ -22,11 +23,14 @@ class EscalationAgent:
         summary = self._build_summary(conv)
         # In live mode: create/update the incident with assignment to L2/L3 group
         if conv.ticket:
-            self.snow.update_incident(conv.ticket, {
-                "state": "In Progress",
-                "assignment_group": "L2 Support",
-                "work_notes": summary,
-            })
+            self.snow.update_incident(
+                conv.ticket,
+                {
+                    "state": "In Progress",
+                    "assignment_group": "L2 Support",
+                    "work_notes": summary,
+                },
+            )
         return {
             "escalated": True,
             "level": "L2",
@@ -40,8 +44,10 @@ class EscalationAgent:
         lines.append(f"Solicitud del usuario: {conv.user_message}")
         if conv.classification:
             c = conv.classification
-            lines.append(f"Clasificación: {c.intent.value} | {c.category}/{c.subcategory} | "
-                         f"Grupo: {c.assignment_group} | Prioridad: {c.priority.value}")
+            lines.append(
+                f"Clasificación: {c.intent.value} | {c.category}/{c.subcategory} | "
+                f"Grupo: {c.assignment_group} | Prioridad: {c.priority.value}"
+            )
         for m in conv.messages:
             if m.agent in ("diagnostico", "politicas", "ejecucion"):
                 lines.append(f"[{m.agent}] {m.content}")

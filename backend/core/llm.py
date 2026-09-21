@@ -9,13 +9,14 @@ The multi-agent system is model-agnostic. It can run against:
 Every agent talks to the LLM through this single interface so the whole
 orchestration can be pointed at Jan (or any provider) with one env var.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -27,16 +28,16 @@ from ..llmops.errors import RetryableError, retry
 # ---------------------------------------------------------------------------
 @dataclass
 class LLMConfig:
-    provider: str = "jan"            # jan | openai | mock
+    provider: str = "jan"  # jan | openai | mock
     base_url: str = "http://localhost:1337/v1"
-    api_key: str = ""                # Fase 0: sin valor por defecto; Jan ignora la clave
-    model: str = "gpt-oss:latest"    # Jan default model; override per provider
+    api_key: str = ""  # Fase 0: sin valor por defecto; Jan ignora la clave
+    model: str = "gpt-oss:latest"  # Jan default model; override per provider
     temperature: float = 0.2
     max_tokens: int = 1200
     timeout: float = 60.0
 
     @classmethod
-    def from_env(cls) -> "LLMConfig":
+    def from_env(cls) -> LLMConfig:
         provider = os.getenv("LLM_PROVIDER", "jan").lower()
         base_url = os.getenv("LLM_BASE_URL", "http://localhost:1337/v1")
         api_key = os.getenv("LLM_API_KEY", "")
@@ -74,7 +75,7 @@ def extract_json(text: str) -> Any:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(text[start:i + 1])
+                        return json.loads(text[start : i + 1])
                     except json.JSONDecodeError:
                         break
     raise ValueError(f"Could not extract JSON from: {text[:300]}")
@@ -105,65 +106,132 @@ class MockLLM:
         # --- Classifier task ---
         if "clasificador" in s or "clasificar" in s or "intencion" in s:
             if "crm" in u or "entrar" in u or "acceso" in u or "bloqueada" in u:
-                return json.dumps({
-                    "intent": "incident", "category": "Incident", "subcategory": "Account Access",
-                    "assignment_group": "IT Service Desk", "impact": 2, "urgency": 2,
-                    "priority": "P2", "confidence": 0.92, "sentiment": "negative",
-                    "keywords": ["no puedo entrar", "crm", "cuenta"],
-                    "summary": "Usuario no puede acceder al CRM",
-                })
+                return json.dumps(
+                    {
+                        "intent": "incident",
+                        "category": "Incident",
+                        "subcategory": "Account Access",
+                        "assignment_group": "IT Service Desk",
+                        "impact": 2,
+                        "urgency": 2,
+                        "priority": "P2",
+                        "confidence": 0.92,
+                        "sentiment": "negative",
+                        "keywords": ["no puedo entrar", "crm", "cuenta"],
+                        "summary": "Usuario no puede acceder al CRM",
+                    }
+                )
             if "cómo" in u or "como" in u or "paso" in u or "guía" in u or "instrucciones" in u:
-                return json.dumps({
-                    "intent": "knowledge", "category": "Knowledge", "subcategory": "",
-                    "assignment_group": "", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.8, "sentiment": "neutral",
-                    "keywords": ["guía"], "summary": "Consulta de base de conocimientos",
-                })
+                return json.dumps(
+                    {
+                        "intent": "knowledge",
+                        "category": "Knowledge",
+                        "subcategory": "",
+                        "assignment_group": "",
+                        "impact": 3,
+                        "urgency": 3,
+                        "priority": "P4",
+                        "confidence": 0.8,
+                        "sentiment": "neutral",
+                        "keywords": ["guía"],
+                        "summary": "Consulta de base de conocimientos",
+                    }
+                )
             if "contraseña" in u or "password" in u or "restablezco" in u:
-                return json.dumps({
-                    "intent": "service_request", "category": "Service Request", "subcategory": "Password Reset",
-                    "assignment_group": "IT Service Desk", "impact": 3, "urgency": 2,
-                    "priority": "P3", "confidence": 0.9, "sentiment": "neutral",
-                    "keywords": ["contraseña"], "summary": "Restablecimiento de contraseña",
-                })
+                return json.dumps(
+                    {
+                        "intent": "service_request",
+                        "category": "Service Request",
+                        "subcategory": "Password Reset",
+                        "assignment_group": "IT Service Desk",
+                        "impact": 3,
+                        "urgency": 2,
+                        "priority": "P3",
+                        "confidence": 0.9,
+                        "sentiment": "neutral",
+                        "keywords": ["contraseña"],
+                        "summary": "Restablecimiento de contraseña",
+                    }
+                )
             if "laptop" in u or "hardware" in u or "monitor" in u:
-                return json.dumps({
-                    "intent": "approval", "category": "Service Request", "subcategory": "Hardware",
-                    "assignment_group": "Hardware Team", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.9, "sentiment": "neutral",
-                    "keywords": ["laptop", "hardware"], "summary": "Solicitud de nuevo hardware",
-                })
+                return json.dumps(
+                    {
+                        "intent": "approval",
+                        "category": "Service Request",
+                        "subcategory": "Hardware",
+                        "assignment_group": "Hardware Team",
+                        "impact": 3,
+                        "urgency": 3,
+                        "priority": "P4",
+                        "confidence": 0.9,
+                        "sentiment": "neutral",
+                        "keywords": ["laptop", "hardware"],
+                        "summary": "Solicitud de nuevo hardware",
+                    }
+                )
             if "licencia" in u or "software" in u:
-                return json.dumps({
-                    "intent": "service_request", "category": "Service Request", "subcategory": "Software License",
-                    "assignment_group": "Software Team", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.85, "sentiment": "neutral",
-                    "keywords": ["licencia"], "summary": "Solicitud de licencia de software",
-                })
+                return json.dumps(
+                    {
+                        "intent": "service_request",
+                        "category": "Service Request",
+                        "subcategory": "Software License",
+                        "assignment_group": "Software Team",
+                        "impact": 3,
+                        "urgency": 3,
+                        "priority": "P4",
+                        "confidence": 0.85,
+                        "sentiment": "neutral",
+                        "keywords": ["licencia"],
+                        "summary": "Solicitud de licencia de software",
+                    }
+                )
             if "estado" in u or "cómo va" in u or "progreso" in u:
-                return json.dumps({
-                    "intent": "status", "category": "Status", "subcategory": "",
-                    "assignment_group": "", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.8, "sentiment": "neutral",
-                    "keywords": ["estado"], "summary": "Consulta de estado de ticket",
-                })
-            return json.dumps({
-                "intent": "general", "category": "", "subcategory": "", "assignment_group": "",
-                "impact": 3, "urgency": 3, "priority": "P4", "confidence": 0.4,
-                "sentiment": "neutral", "keywords": [], "summary": "Consulta general",
-            })
+                return json.dumps(
+                    {
+                        "intent": "status",
+                        "category": "Status",
+                        "subcategory": "",
+                        "assignment_group": "",
+                        "impact": 3,
+                        "urgency": 3,
+                        "priority": "P4",
+                        "confidence": 0.8,
+                        "sentiment": "neutral",
+                        "keywords": ["estado"],
+                        "summary": "Consulta de estado de ticket",
+                    }
+                )
+            return json.dumps(
+                {
+                    "intent": "general",
+                    "category": "",
+                    "subcategory": "",
+                    "assignment_group": "",
+                    "impact": 3,
+                    "urgency": 3,
+                    "priority": "P4",
+                    "confidence": 0.4,
+                    "sentiment": "neutral",
+                    "keywords": [],
+                    "summary": "Consulta general",
+                }
+            )
         # --- Knowledge synthesis task ---
         if "artículo" in s or "paso a paso" in s or "base de conocimientos" in s:
-            return ("Para restablecer tu contraseña: 1) Ve a la página de login. "
-                    "2) Haz clic en 'Olvidé mi contraseña'. 3) Ingresa tu correo corporativo. "
-                    "4) Recibirás un enlace temporal válido por 15 minutos. "
-                    "5) Crea una nueva contraseña segura.")
+            return (
+                "Para restablecer tu contraseña: 1) Ve a la página de login. "
+                "2) Haz clic en 'Olvidé mi contraseña'. 3) Ingresa tu correo corporativo. "
+                "4) Recibirás un enlace temporal válido por 15 minutos. "
+                "5) Crea una nueva contraseña segura."
+            )
         # --- Generic fallback ---
-        return json.dumps({
-            "intent": "general",
-            "response": "He recibido tu solicitud. Un agente especializado la atenderá.",
-            "confidence": 0.5,
-        })
+        return json.dumps(
+            {
+                "intent": "general",
+                "response": "He recibido tu solicitud. Un agente especializado la atenderá.",
+                "confidence": 0.5,
+            }
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -195,9 +263,7 @@ class OpenAICompatLLM:
             except httpx.HTTPStatusError as e:
                 # Fase 0: errores transitorios se reintentan con backoff + jitter
                 if e.response.status_code in (429, 500, 502, 503, 504):
-                    raise RetryableError(
-                        f"LLM transitorio: HTTP {e.response.status_code}"
-                    ) from e
+                    raise RetryableError(f"LLM transitorio: HTTP {e.response.status_code}") from e
                 raise
             return resp.json()["choices"][0]["message"]["content"]
 
@@ -214,7 +280,7 @@ class OpenAICompatLLM:
 # Facade
 # ---------------------------------------------------------------------------
 class LLM:
-    def __init__(self, config: Optional[LLMConfig] = None):
+    def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig.from_env()
         if self.config.provider == "mock":
             self._impl = MockLLM(self.config)

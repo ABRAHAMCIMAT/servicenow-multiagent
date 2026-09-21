@@ -2,14 +2,13 @@
 Dashboard API — exposes the four-dimension metrics as JSON for the dashboard
 frontend. Reads from the standardized telemetry log, so it is model-agnostic.
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 from .metrics import MetricsEngine
 
 
-def build_dashboard_payload(engine: Optional[MetricsEngine] = None) -> dict:
+def build_dashboard_payload(engine: MetricsEngine | None = None) -> dict:
     engine = engine or MetricsEngine()
     report = engine.full_report()
     return {

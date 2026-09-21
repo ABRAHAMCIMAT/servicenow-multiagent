@@ -10,18 +10,18 @@ Dimensions:
   3. Costos y Consumo          — costo por conversación, tokens, costo total USD
   4. Orquestación/Ciclo de vida— tasa de escalación, awaiting_approval, abandono
 """
+
 from __future__ import annotations
 
 import json
 import os
 from collections import Counter, defaultdict
-from typing import Any, Optional
 
 from ..config import TELEMETRY_LOG
 
 
 class MetricsEngine:
-    def __init__(self, log_path: Optional[str] = None):
+    def __init__(self, log_path: str | None = None):
         self.log_path = log_path or TELEMETRY_LOG
 
     # -- loading ------------------------------------------------------------
@@ -55,8 +55,7 @@ class MetricsEngine:
         # FCR: resolved without human intervention
         fcr = sum(1 for c in convs if c.get("resolved_without_human"))
         # Deflection: knowledge/self-service that avoided a formal ticket
-        deflected = sum(1 for c in convs
-                        if c.get("resolved_without_human") and not c.get("ticket_number"))
+        deflected = sum(1 for c in convs if c.get("resolved_without_human") and not c.get("ticket_number"))
         # Intent distribution
         intents = Counter(c.get("intent", "unknown") for c in convs)
         # MTTR: avg e2e_ms of resolved conversations
@@ -164,8 +163,9 @@ class MetricsEngine:
     def full_report(self) -> dict:
         events = self.load_events()
         return {
-            "generated_at": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc).isoformat(),
+            "generated_at": __import__("datetime")
+            .datetime.now(__import__("datetime").timezone.utc)
+            .isoformat(),
             "event_count": len(events),
             "business": self.business_metrics(events),
             "performance": self.performance_metrics(events),

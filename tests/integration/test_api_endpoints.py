@@ -1,4 +1,5 @@
 """Pruebas de los endpoints REST de la API."""
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -23,8 +24,7 @@ def test_chat_accepts_custom_caller(client):
 
 
 def test_chat_creates_incident_ticket(client):
-    body = client.post("/api/chat",
-                       json={"message": "No puedo entrar al CRM, cuenta bloqueada"}).json()
+    body = client.post("/api/chat", json={"message": "No puedo entrar al CRM, cuenta bloqueada"}).json()
     assert body["ticket"] is not None
 
 

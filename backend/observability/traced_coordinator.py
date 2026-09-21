@@ -7,20 +7,20 @@ politicas, ejecucion, conocimiento, seguimiento, escalacion) is recorded as a
 span with its latency. The final outcome is recorded as a 'conversation' event
 with the epic's success signals (FCR, deflection, escalation, awaiting_approval).
 """
+
 from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, Optional
 
-from .telemetry import Telemetry
-from .instrument import InstrumentedLLM
-from ..security.redaction import preview
 from ..core.models import Conversation, Intent
+from ..security.redaction import preview
+from .instrument import InstrumentedLLM
+from .telemetry import Telemetry
 
 
 class TracedCoordinator:
-    def __init__(self, coordinator, telemetry: Optional[Telemetry] = None):
+    def __init__(self, coordinator, telemetry: Telemetry | None = None):
         self._coord = coordinator
         self._telemetry = telemetry or Telemetry()
 
@@ -30,7 +30,8 @@ class TracedCoordinator:
         # Fase 0: privacidad primero. preview() omite el contenido del usuario
         # salvo LOG_USER_CONTENT=true (y entonces lo redacta).
         self._telemetry.start_trace(
-            trace_id, "conversation",
+            trace_id,
+            "conversation",
             metadata={"user_message": preview(user_message), "caller": caller},
         )
 

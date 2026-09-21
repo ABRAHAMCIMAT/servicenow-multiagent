@@ -3,17 +3,17 @@ In-memory conversation store with optional JSON persistence.
 Keeps the system runnable with zero external dependencies; swap for a real
 DB / ServiceNow table when integrating.
 """
+
 from __future__ import annotations
 
 import json
 import os
-from typing import Optional
 
 from .models import Conversation
 
 
 class ConversationStore:
-    def __init__(self, persist_path: Optional[str] = None):
+    def __init__(self, persist_path: str | None = None):
         self._convs: dict[str, Conversation] = {}
         self._persist_path = persist_path
 
@@ -23,7 +23,7 @@ class ConversationStore:
         self._save()
         return conv
 
-    def get(self, conv_id: str) -> Optional[Conversation]:
+    def get(self, conv_id: str) -> Conversation | None:
         return self._convs.get(conv_id)
 
     def update(self, conv: Conversation) -> None:

@@ -10,9 +10,12 @@ mantenimiento y la extensibilidad:
   - Facade (fachada): interfaz unificada del sistema.
   - Observer (observador): notificación de eventos (telemetría).
 """
+
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+import contextlib
+from collections.abc import Callable
+from typing import Any
 
 
 class Registry:
@@ -39,7 +42,7 @@ class Registry:
 class Strategy:
     """Selección de estrategia por clave (patrón Strategy)."""
 
-    def __init__(self, default: Optional[str] = None):
+    def __init__(self, default: str | None = None):
         self._strategies: dict[str, Callable] = {}
         self._default = default
 
@@ -80,7 +83,5 @@ class EventBus:
 
     def publish(self, event: str, payload: Any = None) -> None:
         for listener in self._listeners.get(event, []):
-            try:
-                listener(payload)
-            except Exception:
-                pass  # un listener no debe romper el bus
+            with contextlib.suppress(Exception):
+                listener(payload)  # un listener no debe romper el bus

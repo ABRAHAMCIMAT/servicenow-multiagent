@@ -1,0 +1,73 @@
+name: servicenow-multiagent
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: servicenow-multiagent:${TAG:-local}
+    container_name: snow-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      # --- Fase 0: seguridad (obligatorias en production) ---
+      APP_ENV: ${APP_ENV:-production}
+      API_KEYS: "${API_KEYS:?API_KEYS es obligatoria, formato clave:rol}"
+      CORS_ORIGINS: "${CORS_ORIGINS:?CORS_ORIGINS es obligatoria en production}"
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-60}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60}
+      # --- Rutas de datos ---
+      DATA_DIR: /app/data
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_USER_CONTENT: ${LOG_USER_CONTENT:-false}
+      TELEMETRY_MAX_EVENTS: ${TELEMETRY_MAX_EVENTS:-5000}
+      # --- LLM ---
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:1337/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-oss:latest}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      # --- ServiceNow ---
+      SNOW_INSTANCE: ${SNOW_INSTANCE:-}
+      SNOW_USER: ${SNOW_USER:-}
+      SNOW_PASSWORD: ${SNOW_PASSWORD:-}
+      SNOW_TOKEN: ${SNOW_TOKEN:-}
+      # --- Notificaciones ---
+      NOTIFY_CHANNEL: ${NOTIFY_CHANNEL:-slack}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+      WHATSAPP_API_URL: ${WHATSAPP_API_URL:-}
+      # --- Observabilidad ---
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+    volumes:
+      - snow-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks: [snow-net]
+
+  # --- Perfil opcional: Jan como proveedor LLM local ---
+  # Levantar con: docker compose --profile live up
+  jan:
+    image: janhq/jan:latest
+    container_name: snow-jan
+    profiles: [live]
+    ports:
+      - "1337:1337"
+    volumes:
+      - jan-data:/home/jan/data
+    networks: [snow-net]
+
+volumes:
+  snow-data:
+  jan-data:
+
+networks:
+  snow-net:
+    driver: bridge

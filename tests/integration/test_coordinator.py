@@ -1,4 +1,5 @@
 """Pruebas de orquestacion del agente coordinador."""
+
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -75,8 +76,7 @@ def test_metrics_query_routes_to_metrics_agent(coordinator):
 
 
 def test_metrics_keywords_are_detected(coordinator):
-    for msg in ["dashboard", "kpis del sistema", "costo en tokens",
-                "tasa de escalación", "mttr del mes"]:
+    for msg in ["dashboard", "kpis del sistema", "costo en tokens", "tasa de escalación", "mttr del mes"]:
         conv = coordinator.handle(msg)
         assert "metricas" in [m.agent for m in conv.messages], msg
 
@@ -127,8 +127,12 @@ def test_knowledge_not_found_escalates(coordinator):
 
 # -- estado e idempotencia ---------------------------------------------------
 def test_status_is_set_on_every_path(coordinator):
-    for msg in ["No puedo entrar al CRM", "¿cómo restablezco mi contraseña?",
-                "Buenos días", "quiero una laptop"]:
+    for msg in [
+        "No puedo entrar al CRM",
+        "¿cómo restablezco mi contraseña?",
+        "Buenos días",
+        "quiero una laptop",
+    ]:
         conv = coordinator.handle(msg)
         assert conv.status in ("resolved", "escalated", "awaiting_approval", "in_progress")
 
@@ -143,6 +147,7 @@ def test_conversations_get_unique_ids(coordinator):
 def test_raw_user_message_not_logged(coordinator, tmp_path):
     """El correo del usuario no debe acabar en el log."""
     from backend.llmops.logging import setup_logging
+
     logfile = tmp_path / "coord.log"
     setup_logging(level="INFO", log_file=str(logfile))
     coordinator.handle("mi correo es ana@corp.com y no puedo entrar")
@@ -152,6 +157,7 @@ def test_raw_user_message_not_logged(coordinator, tmp_path):
 
 def test_log_omits_user_content_by_default(coordinator, tmp_path):
     from backend.llmops.logging import setup_logging
+
     logfile = tmp_path / "coord2.log"
     setup_logging(level="INFO", log_file=str(logfile))
     coordinator.handle("no puedo entrar al CRM")

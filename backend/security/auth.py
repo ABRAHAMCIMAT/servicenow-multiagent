@@ -12,13 +12,13 @@ Uso en un endpoint:
     def chat(req: ChatRequest, principal: Principal = Depends(require_auth)):
         ...
 """
+
 from __future__ import annotations
 
 import hashlib
 import os
 import secrets
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, status
 
@@ -33,13 +33,15 @@ class AuthError(HTTPException):
     """401 - credencial ausente o invalida."""
 
     def __init__(self, detail: str = "No autorizado"):
-        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail,
-                         headers={"WWW-Authenticate": "Bearer"})
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=detail, headers={"WWW-Authenticate": "Bearer"}
+        )
 
 
 @dataclass(frozen=True)
 class Principal:
     """Identidad autenticada: id estable (hash) + rol."""
+
     key_id: str
     role: str
 
@@ -68,7 +70,7 @@ def _load_keys() -> dict:
     return keys
 
 
-_API_KEYS: Optional[dict] = None
+_API_KEYS: dict | None = None
 
 
 def _keys() -> dict:
@@ -78,7 +80,7 @@ def _keys() -> dict:
     return _API_KEYS
 
 
-def _extract_key(authorization: Optional[str], x_api_key: Optional[str]) -> Optional[str]:
+def _extract_key(authorization: str | None, x_api_key: str | None) -> str | None:
     if x_api_key:
         return x_api_key.strip()
     if authorization and authorization.lower().startswith("bearer "):
@@ -92,8 +94,8 @@ def key_id_for(raw_key: str) -> str:
 
 
 def get_principal(
-    authorization: Optional[str] = Header(default=None),
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> Principal:
     """Dependencia de FastAPI: valida la credencial y devuelve el Principal."""
     key = _extract_key(authorization, x_api_key)
@@ -112,9 +114,10 @@ def require_auth(principal: Principal = Depends(get_principal)) -> Principal:
 
 def require_role(required: str):
     """Devuelve una dependencia que exige un rol minimo."""
+
     def _dep(principal: Principal = Depends(get_principal)) -> Principal:
         if not principal.can(required):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail=f"Requiere rol '{required}'.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Requiere rol '{required}'.")
         return principal
+
     return _dep

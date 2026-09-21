@@ -5,6 +5,7 @@ Conecta con ServiceNow / AD / catálogo para ejecutar la tarea automatizada
 (desbloqueo de cuenta, restablecimiento de contraseña, asignación de
 licencia) y devuelve el resultado al usuario.
 """
+
 from __future__ import annotations
 
 from ..core.llm import LLM
@@ -28,9 +29,16 @@ class ExecutionAgent:
             software = self._extract_software(user) or "software solicitado"
             return self.snow.assign_license(software, target or "usuario")
         if action == "request_hardware":
-            return {"success": True, "action": "request_hardware",
-                    "message": "Solicitud de hardware registrada. Se envió la aprobación al manager."}
-        return {"success": False, "action": action, "message": "Acción no soportada por el agente de ejecución."}
+            return {
+                "success": True,
+                "action": "request_hardware",
+                "message": "Solicitud de hardware registrada. Se envió la aprobación al manager.",
+            }
+        return {
+            "success": False,
+            "action": action,
+            "message": "Acción no soportada por el agente de ejecución.",
+        }
 
     def _extract_target(self, msg: str) -> str:
         # naive extraction; real impl would use NER

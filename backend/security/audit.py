@@ -5,29 +5,31 @@ Registra quien hizo que, cuando y con que resultado. El actor se identifica
 por el hash de su credencial (key_id), nunca por la clave. El archivo es
 append-only; la rotacion se gestiona fuera del proceso (logrotate).
 """
+
 from __future__ import annotations
 
 import json
 import os
 import threading
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 _lock = threading.Lock()
 
 
 class AuditLog:
-    def __init__(self, path: Optional[str] = None):
+    def __init__(self, path: str | None = None):
         if path is None:
             from ..config import AUDIT_LOG
+
             path = AUDIT_LOG
         self.path = path
 
-    def record(self, *, action: str, actor: str, target: str = "",
-               outcome: str = "ok", metadata: Optional[dict] = None) -> None:
+    def record(
+        self, *, action: str, actor: str, target: str = "", outcome: str = "ok", metadata: dict | None = None
+    ) -> None:
         """Escribe una entrada de auditoria. Nunca lanza excepciones."""
         entry = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "action": action,
             "actor": actor,
             "target": target,
@@ -45,7 +47,7 @@ class AuditLog:
                 pass  # la auditoria nunca debe romper el flujo
 
 
-_log: Optional[AuditLog] = None
+_log: AuditLog | None = None
 
 
 def get_audit_log() -> AuditLog:

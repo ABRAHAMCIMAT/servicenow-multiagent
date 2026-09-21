@@ -1,4 +1,5 @@
 """Pruebas del rate limiter de ventana deslizante (Fase 0)."""
+
 import time
 
 import pytest
@@ -7,14 +8,20 @@ from starlette.requests import Request
 
 
 def _req(headers=None, client=("1.2.3.4", 80)):
-    return Request({
-        "type": "http", "method": "GET", "path": "/",
-        "headers": headers or [], "client": client,
-    })
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": headers or [],
+            "client": client,
+        }
+    )
 
 
 def test_allows_up_to_limit():
     from backend.security.rate_limit import RateLimiter
+
     rl = RateLimiter(max_requests=3, window_seconds=60)
     for _ in range(3):
         rl.check("user-a")
@@ -22,6 +29,7 @@ def test_allows_up_to_limit():
 
 def test_blocks_over_limit_with_429():
     from backend.security.rate_limit import RateLimiter
+
     rl = RateLimiter(max_requests=2, window_seconds=60)
     rl.check("x")
     rl.check("x")
@@ -33,6 +41,7 @@ def test_blocks_over_limit_with_429():
 
 def test_window_expiry_allows_again():
     from backend.security.rate_limit import RateLimiter
+
     rl = RateLimiter(max_requests=1, window_seconds=1)
     rl.check("y")
     with pytest.raises(HTTPException):
@@ -43,6 +52,7 @@ def test_window_expiry_allows_again():
 
 def test_limits_are_per_identity():
     from backend.security.rate_limit import RateLimiter
+
     rl = RateLimiter(max_requests=1, window_seconds=60)
     rl.check("alice")
     rl.check("bob")  # identidad distinta, no debe bloquear
@@ -52,6 +62,7 @@ def test_limits_are_per_identity():
 
 def test_identity_prefers_credential_over_ip():
     from backend.security.rate_limit import identity_for
+
     ident = identity_for(_req(headers=[(b"x-api-key", b"abc")]))
     assert ident.startswith("key:")
     assert "1.2.3.4" not in ident  # no filtra la IP cuando hay credencial
@@ -59,12 +70,14 @@ def test_identity_prefers_credential_over_ip():
 
 def test_identity_accepts_bearer():
     from backend.security.rate_limit import identity_for
+
     ident = identity_for(_req(headers=[(b"authorization", b"Bearer tok")]))
     assert ident.startswith("key:")
 
 
 def test_identity_is_stable_for_same_key():
     from backend.security.rate_limit import identity_for
+
     a = identity_for(_req(headers=[(b"x-api-key", b"abc")]))
     b = identity_for(_req(headers=[(b"x-api-key", b"abc")], client=("9.9.9.9", 1)))
     assert a == b
@@ -72,12 +85,14 @@ def test_identity_is_stable_for_same_key():
 
 def test_identity_falls_back_to_ip():
     from backend.security.rate_limit import identity_for
+
     assert identity_for(_req()) == "ip:1.2.3.4"
 
 
 def test_anonymous_requests_are_also_limited():
     """Las peticiones sin credencial deben acotarse por IP (no ilimitadas)."""
     from backend.security.rate_limit import RateLimiter, identity_for
+
     rl = RateLimiter(max_requests=1, window_seconds=60)
     r = _req()
     rl.check(identity_for(r))

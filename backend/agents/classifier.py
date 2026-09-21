@@ -13,15 +13,16 @@ Mejores prácticas LLMOps aplicadas:
   - Logging estructurado con contexto.
   - Manejo de errores con degradación elegante (fallback heurístico).
 """
+
 from __future__ import annotations
 
 from ..core.llm import LLM
 from ..core.models import Classification, Intent, Priority
-from ..llmops.logging import get_logger
-from ..llmops.guardrails import default_guardrails
-from ..llmops.prompts import registry
-from ..llmops.evals import Evaluator, check_json_schema, check_intent_valid
 from ..llmops.errors import safe_call
+from ..llmops.evals import Evaluator, check_intent_valid, check_json_schema
+from ..llmops.guardrails import default_guardrails
+from ..llmops.logging import get_logger
+from ..llmops.prompts import registry
 
 log = get_logger("agente.clasificador")
 
@@ -53,8 +54,9 @@ class ClassifierAgent:
     def __init__(self, llm: LLM):
         self.llm = llm
         self.evaluator = Evaluator()
-        self.evaluator.register("json_schema", lambda o: check_json_schema(o, [
-            "intent", "category", "priority", "confidence"]))
+        self.evaluator.register(
+            "json_schema", lambda o: check_json_schema(o, ["intent", "category", "priority", "confidence"])
+        )
         self.evaluator.register("intent_valid", check_intent_valid)
 
     def classify(self, user_message: str) -> Classification:
@@ -82,9 +84,14 @@ class ClassifierAgent:
 
         # Evaluación de salida
         eval_results = self.evaluator.run(data)
-        log.info("clasificación completada",
-                 extra={"intent": data.get("intent"), "priority": data.get("priority"),
-                        "eval_passed": sum(1 for r in eval_results if r.passed)})
+        log.info(
+            "clasificación completada",
+            extra={
+                "intent": data.get("intent"),
+                "priority": data.get("priority"),
+                "eval_passed": sum(1 for r in eval_results if r.passed),
+            },
+        )
 
         intent = self._parse_intent(data.get("intent"))
         priority = self._parse_priority(data.get("priority"), data.get("impact"), data.get("urgency"))
@@ -115,7 +122,7 @@ class ClassifierAgent:
         i, u = int(impact or 3), int(urgency or 3)
         if i == 1 and u == 1:
             return Priority.P1
-        if (i <= 2 and u <= 2):
+        if i <= 2 and u <= 2:
             return Priority.P2
         if u <= 2:
             return Priority.P3
@@ -123,37 +130,114 @@ class ClassifierAgent:
 
     def _heuristic(self, msg: str) -> dict:
         m = msg.lower()
-        urgent = any(w in m for w in ["urgente", "caído", "caido", "bloqueado", "no puedo trabajar", "producción", "produccion", "crítico", "critico"])
+        urgent = any(
+            w in m
+            for w in [
+                "urgente",
+                "caído",
+                "caido",
+                "bloqueado",
+                "no puedo trabajar",
+                "producción",
+                "produccion",
+                "crítico",
+                "critico",
+            ]
+        )
         if "no puedo entrar" in m or "crm" in m or "acceso" in m:
-            return {"intent": "incident", "category": "Incident", "subcategory": "Account Access",
-                    "assignment_group": "IT Service Desk", "impact": 2, "urgency": 2 if urgent else 2,
-                    "priority": "P2" if urgent else "P3", "confidence": 0.8, "sentiment": "negative",
-                    "keywords": ["acceso", "crm"], "summary": "Usuario no puede acceder al CRM"}
+            return {
+                "intent": "incident",
+                "category": "Incident",
+                "subcategory": "Account Access",
+                "assignment_group": "IT Service Desk",
+                "impact": 2,
+                "urgency": 2 if urgent else 2,
+                "priority": "P2" if urgent else "P3",
+                "confidence": 0.8,
+                "sentiment": "negative",
+                "keywords": ["acceso", "crm"],
+                "summary": "Usuario no puede acceder al CRM",
+            }
         if "contraseña" in m or "password" in m:
-            return {"intent": "service_request", "category": "Service Request", "subcategory": "Password Reset",
-                    "assignment_group": "IT Service Desk", "impact": 3, "urgency": 2,
-                    "priority": "P3", "confidence": 0.85, "sentiment": "neutral",
-                    "keywords": ["contraseña"], "summary": "Restablecimiento de contraseña"}
+            return {
+                "intent": "service_request",
+                "category": "Service Request",
+                "subcategory": "Password Reset",
+                "assignment_group": "IT Service Desk",
+                "impact": 3,
+                "urgency": 2,
+                "priority": "P3",
+                "confidence": 0.85,
+                "sentiment": "neutral",
+                "keywords": ["contraseña"],
+                "summary": "Restablecimiento de contraseña",
+            }
         if "licencia" in m or "software" in m:
-            return {"intent": "service_request", "category": "Service Request", "subcategory": "Software License",
-                    "assignment_group": "Software Team", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.8, "sentiment": "neutral",
-                    "keywords": ["licencia"], "summary": "Solicitud de licencia de software"}
+            return {
+                "intent": "service_request",
+                "category": "Service Request",
+                "subcategory": "Software License",
+                "assignment_group": "Software Team",
+                "impact": 3,
+                "urgency": 3,
+                "priority": "P4",
+                "confidence": 0.8,
+                "sentiment": "neutral",
+                "keywords": ["licencia"],
+                "summary": "Solicitud de licencia de software",
+            }
         if "hardware" in m or "laptop" in m or "monitor" in m:
-            return {"intent": "approval", "category": "Service Request", "subcategory": "Hardware",
-                    "assignment_group": "Hardware Team", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.8, "sentiment": "neutral",
-                    "keywords": ["hardware"], "summary": "Solicitud de nuevo hardware"}
+            return {
+                "intent": "approval",
+                "category": "Service Request",
+                "subcategory": "Hardware",
+                "assignment_group": "Hardware Team",
+                "impact": 3,
+                "urgency": 3,
+                "priority": "P4",
+                "confidence": 0.8,
+                "sentiment": "neutral",
+                "keywords": ["hardware"],
+                "summary": "Solicitud de nuevo hardware",
+            }
         if "cómo" in m or "como" in m or "paso" in m or "guía" in m or "instrucciones" in m:
-            return {"intent": "knowledge", "category": "Knowledge", "subcategory": "",
-                    "assignment_group": "", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.7, "sentiment": "neutral",
-                    "keywords": ["guía"], "summary": "Consulta de base de conocimientos"}
+            return {
+                "intent": "knowledge",
+                "category": "Knowledge",
+                "subcategory": "",
+                "assignment_group": "",
+                "impact": 3,
+                "urgency": 3,
+                "priority": "P4",
+                "confidence": 0.7,
+                "sentiment": "neutral",
+                "keywords": ["guía"],
+                "summary": "Consulta de base de conocimientos",
+            }
         if "estado" in m or "cómo va" in m or "progreso" in m or "ticket" in m:
-            return {"intent": "status", "category": "Status", "subcategory": "",
-                    "assignment_group": "", "impact": 3, "urgency": 3,
-                    "priority": "P4", "confidence": 0.7, "sentiment": "neutral",
-                    "keywords": ["estado"], "summary": "Consulta de estado de ticket"}
-        return {"intent": "general", "category": "", "subcategory": "", "assignment_group": "",
-                "impact": 3, "urgency": 3, "priority": "P4", "confidence": 0.4,
-                "sentiment": "neutral", "keywords": [], "summary": "Consulta general"}
+            return {
+                "intent": "status",
+                "category": "Status",
+                "subcategory": "",
+                "assignment_group": "",
+                "impact": 3,
+                "urgency": 3,
+                "priority": "P4",
+                "confidence": 0.7,
+                "sentiment": "neutral",
+                "keywords": ["estado"],
+                "summary": "Consulta de estado de ticket",
+            }
+        return {
+            "intent": "general",
+            "category": "",
+            "subcategory": "",
+            "assignment_group": "",
+            "impact": 3,
+            "urgency": 3,
+            "priority": "P4",
+            "confidence": 0.4,
+            "sentiment": "neutral",
+            "keywords": [],
+            "summary": "Consulta general",
+        }

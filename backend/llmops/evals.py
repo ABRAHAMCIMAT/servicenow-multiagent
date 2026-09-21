@@ -7,10 +7,11 @@ regresiones al cambiar prompts, modelos o lógica de orquestación.
 
 Patrón aplicado: Strategy (estrategias de evaluación intercambiables).
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
 
 from .logging import get_logger
 
@@ -20,6 +21,7 @@ log = get_logger("llmops.evals")
 @dataclass
 class EvalResult:
     """Resultado de una evaluación."""
+
     name: str
     passed: bool
     score: float = 0.0
@@ -84,8 +86,7 @@ def check_json_schema(output: dict, required_fields: list[str]) -> EvalResult:
 
 def check_intent_valid(output: dict) -> EvalResult:
     """Verifica que la intención sea una de las válidas."""
-    valid = {"incident", "service_request", "knowledge", "approval", "status",
-             "escalation", "general"}
+    valid = {"incident", "service_request", "knowledge", "approval", "status", "escalation", "general"}
     intent = output.get("intent", "")
     return EvalResult(
         name="intent_valid",

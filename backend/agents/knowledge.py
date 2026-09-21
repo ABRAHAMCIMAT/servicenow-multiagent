@@ -5,6 +5,7 @@ Busca en los artículos de la base de conocimientos de ServiceNow, extrae la
 respuesta exacta y la explica paso a paso al usuario en el chat, en lugar de
 solo enviar un enlace.
 """
+
 from __future__ import annotations
 
 import re
@@ -59,5 +60,6 @@ class KnowledgeAgent:
         if steps:
             return steps
         # Lista numerada dentro de un parrafo: "1) paso uno 2) paso dos"
-        return [m.strip() for m in re.findall(r"\d+[.)]\s*(.+?)(?=\s*\d+[.)]\s|$)", content, re.S)
-                if m.strip()]
+        return [
+            m.strip() for m in re.findall(r"\d+[.)]\s*(.+?)(?=\s*\d+[.)]\s|$)", content, re.S) if m.strip()
+        ]

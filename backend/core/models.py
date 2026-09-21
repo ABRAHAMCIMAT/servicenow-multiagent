@@ -1,20 +1,20 @@
 """
 Core domain models shared across the multi-agent system.
 """
+
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
-class Intent(str, Enum):
+class Intent(StrEnum):
     INCIDENT = "incident"
     SERVICE_REQUEST = "service_request"
     KNOWLEDGE = "knowledge"
@@ -24,7 +24,7 @@ class Intent(str, Enum):
     GENERAL = "general"
 
 
-class Priority(str, Enum):
+class Priority(StrEnum):
     P1 = "P1"  # Critical
     P2 = "P2"  # High
     P3 = "P3"  # Medium
@@ -34,6 +34,7 @@ class Priority(str, Enum):
 @dataclass
 class Classification:
     """Result of the triage/classifier agent."""
+
     intent: Intent = Intent.GENERAL
     category: str = ""
     subcategory: str = ""
@@ -51,6 +52,7 @@ class Classification:
 @dataclass
 class Ticket:
     """A ServiceNow incident / request record."""
+
     number: str = ""
     short_description: str = ""
     description: str = ""
@@ -97,6 +99,7 @@ class Ticket:
 @dataclass
 class AgentMessage:
     """A message produced by one agent in the orchestration."""
+
     agent: str
     role: str = "assistant"
     content: str = ""
@@ -116,15 +119,18 @@ class AgentMessage:
 @dataclass
 class Conversation:
     """Full multi-agent conversation state."""
+
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     user_message: str = ""
-    classification: Optional[Classification] = None
-    ticket: Optional[Ticket] = None
+    classification: Classification | None = None
+    ticket: Ticket | None = None
     messages: list[AgentMessage] = field(default_factory=list)
-    status: str = "in_progress"   # in_progress | resolved | escalated | awaiting_approval
+    status: str = "in_progress"  # in_progress | resolved | escalated | awaiting_approval
     created_at: str = field(default_factory=now_iso)
 
-    def add(self, agent: str, content: str, data: dict | None = None, role: str = "assistant") -> AgentMessage:
+    def add(
+        self, agent: str, content: str, data: dict | None = None, role: str = "assistant"
+    ) -> AgentMessage:
         msg = AgentMessage(agent=agent, content=content, data=data or {}, role=role)
         self.messages.append(msg)
         return msg

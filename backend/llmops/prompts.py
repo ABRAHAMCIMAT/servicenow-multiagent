@@ -8,17 +8,19 @@ cambios en los prompts a lo largo del tiempo.
 
 Patrón aplicado: Registry (registro) + Template Method.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
 class PromptTemplate:
     """Una plantilla de prompt versionada."""
+
     key: str
     template: str
     version: str = "1.0.0"
@@ -77,33 +79,37 @@ class PromptRegistry:
 # ---------------------------------------------------------------------------
 registry = PromptRegistry()
 
-registry.register(PromptTemplate(
-    key="clasificador",
-    version="1.0.0",
-    description="Prompt del Agente Clasificador: triaje, categoría y prioridad SLA.",
-    template=(
-        "Eres el Agente Clasificador de un sistema de soporte de TI (ServiceNow).\n"
-        "Analiza el mensaje del usuario y devuelve SOLO un JSON con esta estructura:\n"
-        "{{\"intent\": \"incident|service_request|knowledge|approval|status|escalation|general\",\n"
-        "  \"category\": \"categoría\", \"subcategory\": \"subcategoría\",\n"
-        "  \"assignment_group\": \"grupo\", \"impact\": 1-3, \"urgency\": 1-3,\n"
-        "  \"priority\": \"P1|P2|P3|P4\", \"confidence\": 0.0-1.0,\n"
-        "  \"sentiment\": \"positive|neutral|negative\", \"keywords\": [],\n"
-        "  \"summary\": \"resumen breve\"}}\n"
-        "Mensaje del usuario: {user_message}"
-    ),
-    variables=["user_message"],
-))
+registry.register(
+    PromptTemplate(
+        key="clasificador",
+        version="1.0.0",
+        description="Prompt del Agente Clasificador: triaje, categoría y prioridad SLA.",
+        template=(
+            "Eres el Agente Clasificador de un sistema de soporte de TI (ServiceNow).\n"
+            "Analiza el mensaje del usuario y devuelve SOLO un JSON con esta estructura:\n"
+            '{{"intent": "incident|service_request|knowledge|approval|status|escalation|general",\n'
+            '  "category": "categoría", "subcategory": "subcategoría",\n'
+            '  "assignment_group": "grupo", "impact": 1-3, "urgency": 1-3,\n'
+            '  "priority": "P1|P2|P3|P4", "confidence": 0.0-1.0,\n'
+            '  "sentiment": "positive|neutral|negative", "keywords": [],\n'
+            '  "summary": "resumen breve"}}\n'
+            "Mensaje del usuario: {user_message}"
+        ),
+        variables=["user_message"],
+    )
+)
 
-registry.register(PromptTemplate(
-    key="conocimiento",
-    version="1.0.0",
-    description="Prompt del Agente de Conocimiento (RAG): respuesta paso a paso.",
-    template=(
-        "Eres un agente de soporte. Explica al usuario, paso a paso y en español, "
-        "cómo resolver su problema usando SOLO la información del artículo. "
-        "Sé claro y conciso.\n\n"
-        "Consulta del usuario: {query}\n\nArtículo:\n{article}"
-    ),
-    variables=["query", "article"],
-))
+registry.register(
+    PromptTemplate(
+        key="conocimiento",
+        version="1.0.0",
+        description="Prompt del Agente de Conocimiento (RAG): respuesta paso a paso.",
+        template=(
+            "Eres un agente de soporte. Explica al usuario, paso a paso y en español, "
+            "cómo resolver su problema usando SOLO la información del artículo. "
+            "Sé claro y conciso.\n\n"
+            "Consulta del usuario: {query}\n\nArtículo:\n{article}"
+        ),
+        variables=["query", "article"],
+    )
+)

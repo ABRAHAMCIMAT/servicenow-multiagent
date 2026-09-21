@@ -1,4 +1,5 @@
 """Pruebas de la capa de telemetria (eventos JSON estandarizados)."""
+
 import json
 
 import pytest
@@ -7,11 +8,12 @@ import pytest
 @pytest.fixture
 def tel(tmp_path):
     from backend.observability.telemetry import Telemetry
+
     return Telemetry(log_path=str(tmp_path / "tel.jsonl"))
 
 
 def _read(path):
-    return [json.loads(l) for l in open(path) if l.strip()]
+    return [json.loads(line) for line in open(path) if line.strip()]
 
 
 # -- emit --------------------------------------------------------------------
@@ -118,8 +120,9 @@ def test_llm_call_computes_total_tokens(tel):
 
 # -- conversation ------------------------------------------------------------
 def test_conversation_event_records_outcome_signals(tel):
-    tel.conversation("t1", "c1", "incident", "resolved",
-                     resolved_without_human=True, ticket_number="INC0001", e2e_ms=1500)
+    tel.conversation(
+        "t1", "c1", "incident", "resolved", resolved_without_human=True, ticket_number="INC0001", e2e_ms=1500
+    )
     e = tel.events()[0]
     assert e["type"] == "conversation"
     assert e["resolved_without_human"] is True
@@ -127,8 +130,7 @@ def test_conversation_event_records_outcome_signals(tel):
 
 
 def test_conversation_escalated_flag(tel):
-    tel.conversation("t1", "c1", "incident", "escalated",
-                     resolved_without_human=False, escalated=True)
+    tel.conversation("t1", "c1", "incident", "escalated", resolved_without_human=False, escalated=True)
     assert tel.events()[0]["escalated"] is True
 
 
@@ -175,6 +177,7 @@ def test_timed_emits_error_status_and_reraises(tel):
 # -- robustez ----------------------------------------------------------------
 def test_emit_never_raises_on_unwritable_path():
     from backend.observability.telemetry import Telemetry
+
     Telemetry(log_path="/proc/imposible/tel.jsonl").emit({"type": "x"})
 
 
@@ -192,4 +195,5 @@ def test_events_returns_a_copy(tel):
 
 def test_get_telemetry_returns_singleton():
     from backend.observability.telemetry import get_telemetry
+
     assert get_telemetry() is get_telemetry()

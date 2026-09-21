@@ -6,10 +6,10 @@ message; in live mode it posts via webhooks. Configure via env vars:
   NOTIFY_CHANNEL=slack|teams|whatsapp
   SLACK_WEBHOOK_URL / TEAMS_WEBHOOK_URL / WHATSAPP_API_URL
 """
+
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import httpx
 
@@ -25,15 +25,16 @@ class NotificationAdapter:
         self.live = bool(self.slack_webhook or self.teams_webhook or self.whatsapp_url)
         # Fase 0: en produccion el canal elegido debe tener su webhook configurado
         if config.IS_PRODUCTION:
-            _required = {"slack": self.slack_webhook, "teams": self.teams_webhook,
-                         "whatsapp": self.whatsapp_url}
+            _required = {
+                "slack": self.slack_webhook,
+                "teams": self.teams_webhook,
+                "whatsapp": self.whatsapp_url,
+            }
             if not _required.get(self.channel):
-                raise RuntimeError(
-                    f"NOTIFY_CHANNEL='{self.channel}' requiere su webhook en produccion."
-                )
+                raise RuntimeError(f"NOTIFY_CHANNEL='{self.channel}' requiere su webhook en produccion.")
         self._client = httpx.Client(timeout=20.0)
 
-    def send(self, to: str, subject: str, body: str, channel: Optional[str] = None) -> dict:
+    def send(self, to: str, subject: str, body: str, channel: str | None = None) -> dict:
         ch = (channel or self.channel).lower()
         if self.live:
             try:
@@ -46,10 +47,18 @@ class NotificationAdapter:
             except Exception as e:
                 return {"success": False, "error": str(e)}
         # demo: log
-        return {"success": True, "channel": ch, "to": to, "subject": subject, "body": body,
-                "delivered": "live" if self.live else "demo"}
+        return {
+            "success": True,
+            "channel": ch,
+            "to": to,
+            "subject": subject,
+            "body": body,
+            "delivered": "live" if self.live else "demo",
+        }
 
-    def send_approval_request(self, manager: str, resource: str, ticket_number: str, channel: Optional[str] = None) -> dict:
+    def send_approval_request(
+        self, manager: str, resource: str, ticket_number: str, channel: str | None = None
+    ) -> dict:
         subject = f"🔔 Aprobación requerida: {resource}"
         body = (
             f"Se requiere tu aprobación para: **{resource}**\n"
@@ -58,7 +67,9 @@ class NotificationAdapter:
         )
         return self.send(manager, subject, body, channel)
 
-    def send_ticket_update(self, user: str, ticket_number: str, state: str, note: str, channel: Optional[str] = None) -> dict:
+    def send_ticket_update(
+        self, user: str, ticket_number: str, state: str, note: str, channel: str | None = None
+    ) -> dict:
         subject = f"🔄 Actualización de tu ticket {ticket_number}"
         body = f"Estado: **{state}**\n{note}"
         return self.send(user, subject, body, channel)

@@ -6,13 +6,14 @@ The LLM wrapper records every call (provider, model, tokens, latency, cost)
 into the Telemetry layer. It is model-agnostic: it works for OpenAI, Jan, and
 Mock because it only reads the LLMConfig and the raw response.
 """
+
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
-from .telemetry import Telemetry
 from .langfuse_integration import estimate_cost
+from .telemetry import Telemetry
 
 
 class InstrumentedLLM:
@@ -30,7 +31,7 @@ class InstrumentedLLM:
         try:
             result = self._llm.chat(system, user, json_mode=json_mode, **kw)
             status = "ok"
-        except Exception as e:
+        except Exception:
             result = ""
             status = "error"
             raise
@@ -60,7 +61,7 @@ class InstrumentedLLM:
         try:
             result = self._llm.chat_json(system, user, **kw)
             status = "ok"
-        except Exception as e:
+        except Exception:
             result = None
             status = "error"
             raise

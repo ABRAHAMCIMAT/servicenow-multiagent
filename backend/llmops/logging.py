@@ -11,14 +11,15 @@ Uso:
     log = get_logger("coordinador")
     log.info("conversación iniciada", extra={"conversation_id": "abc", "intent": "incident"})
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
 
 from ..security.redaction import redact_text
 
@@ -28,16 +29,27 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         entry = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             # Fase 0: redaccion de PII en el origen (defensa en profundidad)
             "message": redact_text(record.getMessage()),
         }
         # Añadir contexto extra (conversation_id, trace_id, agent, etc.)
-        for key in ("conversation_id", "trace_id", "agent", "intent",
-                    "duration_ms", "status", "model", "provider", "tokens",
-                    "user_message", "message_preview", "caller"):
+        for key in (
+            "conversation_id",
+            "trace_id",
+            "agent",
+            "intent",
+            "duration_ms",
+            "status",
+            "model",
+            "provider",
+            "tokens",
+            "user_message",
+            "message_preview",
+            "caller",
+        ):
             if hasattr(record, key):
                 value = getattr(record, key)
                 entry[key] = redact_text(value) if isinstance(value, str) else value
@@ -48,7 +60,7 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logging(
     level: str = "INFO",
-    log_file: Optional[str] = None,
+    log_file: str | None = None,
     json_output: bool = True,
 ) -> None:
     """Configura el logging global del sistema.
@@ -65,8 +77,10 @@ def setup_logging(
     for h in root.handlers[:]:
         root.removeHandler(h)
 
-    formatter = JsonFormatter() if json_output else logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s %(message)s"
+    formatter = (
+        JsonFormatter()
+        if json_output
+        else logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
     )
 
     # Handler de consola
@@ -76,14 +90,13 @@ def setup_logging(
 
     # Handler de archivo con rotación
     if log_file:
-        try:
+        with contextlib.suppress(Exception):
             from logging.handlers import RotatingFileHandler
+
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
             fh = RotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=5)
             fh.setFormatter(formatter)
-            root.addHandler(fh)
-        except Exception:
-            pass  # el logging nunca debe romper el flujo principal
+            root.addHandler(fh)  # el logging nunca debe romper el flujo principal
 
 
 def get_logger(name: str) -> logging.Logger:

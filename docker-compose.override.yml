@@ -1,0 +1,15 @@
+# Overrides de desarrollo - se aplican automaticamente con `docker compose up`.
+# No copiar a produccion.
+services:
+  api:
+    environment:
+      APP_ENV: development        # relaja los fail-fast de Fase 0
+      LLM_PROVIDER: mock
+      LOG_LEVEL: DEBUG
+    volumes:
+      # Hot reload del codigo sin reconstruir la imagen
+      - ./backend:/app/backend:ro
+      - ./frontend:/app/frontend:ro
+      - ./dashboard:/app/dashboard:ro
+    command: ["python", "-m", "uvicorn", "backend.server:app",
+              "--host", "0.0.0.0", "--port", "8000", "--reload"]

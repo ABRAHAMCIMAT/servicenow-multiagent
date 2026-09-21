@@ -4,6 +4,7 @@ Fixtures compartidas de la suite de pruebas (Fase 1).
 Estrategia: TODAS las pruebas usan el LLM en modo `mock` (determinista, sin red,
 sin coste) y escriben en un directorio temporal, nunca en `backend/data`.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -40,7 +41,7 @@ os.environ["CONV_STORE"] = str(_TMP_ROOT / "data" / "conversations.json")
 os.environ["AUDIT_LOG"] = str(_TMP_ROOT / "data" / "audit.jsonl")
 os.environ["API_KEYS"] = API_KEYS_FOR_TESTS
 os.environ["CORS_ORIGINS"] = "http://localhost:8000"
-os.environ["RATE_LIMIT_MAX"] = "10000"      # no interferir con las pruebas de API
+os.environ["RATE_LIMIT_MAX"] = "10000"  # no interferir con las pruebas de API
 os.environ["RATE_LIMIT_WINDOW"] = "60"
 os.environ["LLM_PROVIDER"] = "mock"
 os.environ["LOG_USER_CONTENT"] = "false"
@@ -77,17 +78,20 @@ def _isolated_env(monkeypatch, tmp_path):
     # Resetear estado global de seguridad entre pruebas
     try:
         import backend.security.auth as auth
+
         auth._API_KEYS = None
     except Exception:
         pass
     try:
         import backend.security.rate_limit as rl
+
         rl.limiter._hits.clear()
         rl.limiter.max_requests = 10000
     except Exception:
         pass
     try:
         import backend.security.audit as audit
+
         audit._log = None
     except Exception:
         pass
@@ -118,6 +122,7 @@ def user_key() -> str:
 @pytest.fixture
 def mock_llm():
     from backend.core.llm import LLM, LLMConfig
+
     return LLM(LLMConfig(provider="mock"))
 
 
@@ -128,8 +133,10 @@ def mock_llm():
 def app(monkeypatch):
     """App FastAPI con configuracion fresca leida del entorno de la prueba."""
     import backend.config
+
     importlib.reload(backend.config)
     import backend.server
+
     importlib.reload(backend.server)
     return backend.server.app
 
@@ -137,6 +144,7 @@ def app(monkeypatch):
 @pytest.fixture
 def client(app):
     from fastapi.testclient import TestClient
+
     c = TestClient(app)
     c.headers.update({"X-API-Key": ADMIN_KEY})
     return c
@@ -145,6 +153,7 @@ def client(app):
 @pytest.fixture
 def anon_client(app):
     from fastapi.testclient import TestClient
+
     return TestClient(app)
 
 
@@ -159,7 +168,7 @@ def agent_factory(mock_llm):
 
     def _make(name: str):
         snow = ServiceNowAdapter()
-        notifier = NotificationAdapter()
+        _notifier = NotificationAdapter()
         mapping = {
             "classifier": ("backend.agents.classifier", "ClassifierAgent", (mock_llm,)),
             "diagnostic": ("backend.agents.diagnostic", "DiagnosticAgent", (mock_llm, snow)),
@@ -180,11 +189,16 @@ def agent_factory(mock_llm):
 def sample_conversation():
     """Conversacion de ejemplo con clasificacion ya resuelta."""
     from backend.core.models import Classification, Conversation, Intent, Priority
+
     conv = Conversation(user_message="No puedo entrar al CRM, mi cuenta esta bloqueada")
     conv.classification = Classification(
-        intent=Intent.INCIDENT, category="Incident", subcategory="Account Access",
-        assignment_group="IT Service Desk", priority=Priority.P2,
-        confidence=0.92, sentiment="negative",
+        intent=Intent.INCIDENT,
+        category="Incident",
+        subcategory="Account Access",
+        assignment_group="IT Service Desk",
+        priority=Priority.P2,
+        confidence=0.92,
+        sentiment="negative",
     )
     return conv
 
@@ -194,4 +208,5 @@ def coordinator(mock_llm):
     from backend.adapters.notifications import NotificationAdapter
     from backend.adapters.servicenow import ServiceNowAdapter
     from backend.agents.coordinator import CoordinatorAgent
+
     return CoordinatorAgent(mock_llm, ServiceNowAdapter(), NotificationAdapter())

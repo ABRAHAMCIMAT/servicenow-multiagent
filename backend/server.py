@@ -15,40 +15,41 @@ de PII en logs y audit trail de acciones sensibles.
 
 Ejecutar:  python -m backend.server   (puerto 8000 por defecto)
 """
+
 from __future__ import annotations
 
 import json
 import os
 import uuid
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import config
-from .core.llm import LLM
-from .core.state import ConversationStore
-from .adapters.servicenow import ServiceNowAdapter
 from .adapters.notifications import NotificationAdapter
+from .adapters.servicenow import ServiceNowAdapter
 from .agents.coordinator import CoordinatorAgent
 from .agents.escalation import EscalationAgent
-from .observability.telemetry import Telemetry, get_telemetry
-from .observability.traced_coordinator import TracedCoordinator
-from .observability.metrics import MetricsEngine
-from .observability.dashboard_api import build_dashboard_payload
-from .llmops.logging import setup_logging, get_logger
-from .llmops.guardrails import default_guardrails
+from .core.llm import LLM
+from .core.state import ConversationStore
 from .llmops.errors import ValidationError
+from .llmops.guardrails import default_guardrails
+from .llmops.logging import get_logger, setup_logging
+from .observability.dashboard_api import build_dashboard_payload
+from .observability.metrics import MetricsEngine
+from .observability.telemetry import get_telemetry
+from .observability.traced_coordinator import TracedCoordinator
 from .security import (
-    Principal,
     ROLE_ADMIN,
     ROLE_AGENT,
     ROLE_USER,
+    Principal,
     get_audit_log,
-    rate_limit_dependency,
     preview,
+    rate_limit_dependency,
     require_auth,
     require_role,
 )
@@ -63,7 +64,7 @@ log = get_logger("server")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,          # lista blanca, nunca "*"
+    allow_origins=config.CORS_ORIGINS,  # lista blanca, nunca "*"
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
@@ -130,16 +131,23 @@ def chat(req: ChatRequest, principal: Principal = Depends(require_auth)):
     try:
         req.message = default_guardrails.validate_input(req.message)
     except ValidationError as e:
-        audit.record(action="chat.rejected", actor=principal.key_id,
-                     outcome="rejected", metadata={"reason": "guardrail"})
+        audit.record(
+            action="chat.rejected",
+            actor=principal.key_id,
+            outcome="rejected",
+            metadata={"reason": "guardrail"},
+        )
         return JSONResponse({"error": str(e)}, status_code=400)
     # Fase 0: nunca se registra el mensaje crudo del usuario (PII)
     # 'message' es clave reservada de LogRecord: se usa message_preview.
     # preview() omite el contenido salvo LOG_USER_CONTENT=true (privacidad primero).
-    log.info("chat recibido", extra={"caller": req.caller,
-                                     "message_preview": preview(req.message, 120)})
-    audit.record(action="chat.received", actor=principal.key_id,
-                 target=req.conversation_id or "", metadata={"caller": req.caller})
+    log.info("chat recibido", extra={"caller": req.caller, "message_preview": preview(req.message, 120)})
+    audit.record(
+        action="chat.received",
+        actor=principal.key_id,
+        target=req.conversation_id or "",
+        metadata={"caller": req.caller},
+    )
     conv = traced.handle(req.message, caller=req.caller)
     store.update(conv)
     return conv.to_dict()
@@ -167,9 +175,12 @@ def escalate(req: EscalateRequest, principal: Principal = Depends(require_role(R
     conv.status = "escalated"
     conv.add("escalacion", result["message"], data=result)
     store.update(conv)
-    audit.record(action="escalate", actor=principal.key_id,
-                 target=req.conversation_id,
-                 metadata={"team": result.get("team", "") if isinstance(result, dict) else ""})
+    audit.record(
+        action="escalate",
+        actor=principal.key_id,
+        target=req.conversation_id,
+        metadata={"team": result.get("team", "") if isinstance(result, dict) else ""},
+    )
     return result
 
 
@@ -204,13 +215,17 @@ async def openai_compat(req: OpenAIRequest, principal: Principal = Depends(requi
     try:
         user_msg = default_guardrails.validate_input(user_msg)
     except ValidationError as e:
-        audit.record(action="chat.rejected", actor=principal.key_id,
-                     outcome="rejected", metadata={"reason": "guardrail", "source": "openai"})
-        return JSONResponse({"error": {"message": str(e), "type": "invalid_request_error"}},
-                            status_code=400)
+        audit.record(
+            action="chat.rejected",
+            actor=principal.key_id,
+            outcome="rejected",
+            metadata={"reason": "guardrail", "source": "openai"},
+        )
+        return JSONResponse({"error": {"message": str(e), "type": "invalid_request_error"}}, status_code=400)
 
-    audit.record(action="chat.received", actor=principal.key_id,
-                 metadata={"source": "openai", "caller": "jan"})
+    audit.record(
+        action="chat.received", actor=principal.key_id, metadata={"source": "openai", "caller": "jan"}
+    )
     conv = traced.handle(user_msg)
     store.update(conv)
 
@@ -218,17 +233,21 @@ async def openai_compat(req: OpenAIRequest, principal: Principal = Depends(requi
     reply = _build_reply(conv)
 
     if req.stream:
+
         async def gen():
             for chunk in _chunk_text(reply):
                 yield f"data: {json.dumps({'choices': [{'delta': {'content': chunk}}]})}\n\n"
             yield "data: [DONE]\n\n"
+
         return StreamingResponse(gen(), media_type="text/event-stream")
 
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
         "object": "chat.completion",
         "model": req.model,
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}
+        ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
 
@@ -243,17 +262,18 @@ def _build_reply(conv) -> str:
 
 def _chunk_text(text: str, size: int = 40):
     for i in range(0, len(text), size):
-        yield text[i:i + size]
+        yield text[i : i + size]
 
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("PORT", "8000"))
     print(f"ServiceNow Multi-Agent API en http://localhost:{port}")
     print(f"  LLM: {llm.config.provider} ({llm.config.model})")
     print(f"  ServiceNow: {'LIVE' if snow.live else 'DEMO'}")
     print(f"  Observabilidad: telemetría JSON + Langfuse ({'ON' if telemetry.langfuse else 'OFF'})")
-    print(f"  Seguridad: auth + RBAC + rate limit + redacción PII + audit trail")
+    print("  Seguridad: auth + RBAC + rate limit + redacción PII + audit trail")
     print(f"  CORS: {config.CORS_ORIGINS}")
     print(f"  Dashboard: http://localhost:{port}/dashboard")
     print(f"  Endpoint OpenAI-compatible (para Jan): http://localhost:{port}/v1/chat/completions")

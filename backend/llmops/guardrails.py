@@ -7,13 +7,14 @@ prompt, contenido) y validación de salida (esquema, intención válida).
 
 Patrón aplicado: Chain of Responsibility (cadena de validaciones).
 """
+
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Optional
+from collections.abc import Callable
 
-from .logging import get_logger
 from .errors import ValidationError
+from .logging import get_logger
 
 log = get_logger("llmops.guardrails")
 
@@ -22,15 +23,15 @@ class Guardrails:
     """Cadena de validaciones de entrada y salida."""
 
     def __init__(self):
-        self._input_checks: list[Callable[[str], Optional[str]]] = []
-        self._output_checks: list[Callable[[dict], Optional[str]]] = []
+        self._input_checks: list[Callable[[str], str | None]] = []
+        self._output_checks: list[Callable[[dict], str | None]] = []
 
     # -- registro de checks ------------------------------------------------
-    def add_input_check(self, check: Callable[[str], Optional[str]]) -> None:
+    def add_input_check(self, check: Callable[[str], str | None]) -> None:
         """Añade un check de entrada. Devuelve un mensaje de error o None."""
         self._input_checks.append(check)
 
-    def add_output_check(self, check: Callable[[dict], Optional[str]]) -> None:
+    def add_output_check(self, check: Callable[[dict], str | None]) -> None:
         """Añade un check de salida. Devuelve un mensaje de error o None."""
         self._output_checks.append(check)
 
@@ -60,15 +61,16 @@ class Guardrails:
 # ---------------------------------------------------------------------------
 # Checks de entrada de ejemplo
 # ---------------------------------------------------------------------------
-def check_max_length(max_len: int = 2000) -> Callable[[str], Optional[str]]:
-    def _check(message: str) -> Optional[str]:
+def check_max_length(max_len: int = 2000) -> Callable[[str], str | None]:
+    def _check(message: str) -> str | None:
         if len(message) > max_len:
             return f"El mensaje excede el máximo de {max_len} caracteres."
         return None
+
     return _check
 
 
-def check_prompt_injection() -> Callable[[str], Optional[str]]:
+def check_prompt_injection() -> Callable[[str], str | None]:
     """Detecta intentos de inyección de prompt."""
     patterns = [
         r"ignora\s+(todas\s+las\s+)?(las\s+)?instrucciones",
@@ -78,35 +80,40 @@ def check_prompt_injection() -> Callable[[str], Optional[str]]:
         r"you\s+are\s+now\s+",
         r"<\|im_start\|>",
     ]
-    def _check(message: str) -> Optional[str]:
+
+    def _check(message: str) -> str | None:
         for p in patterns:
             if re.search(p, message, re.IGNORECASE):
                 return "Se detectó un posible intento de inyección de prompt."
         return None
+
     return _check
 
 
 # ---------------------------------------------------------------------------
 # Checks de salida de ejemplo
 # ---------------------------------------------------------------------------
-def check_output_intent() -> Callable[[dict], Optional[str]]:
-    valid = {"incident", "service_request", "knowledge", "approval", "status",
-             "escalation", "general"}
-    def _check(output: dict) -> Optional[str]:
+def check_output_intent() -> Callable[[dict], str | None]:
+    valid = {"incident", "service_request", "knowledge", "approval", "status", "escalation", "general"}
+
+    def _check(output: dict) -> str | None:
         intent = output.get("intent")
         if intent and intent not in valid:
             return f"Intención no válida: {intent}"
         return None
+
     return _check
 
 
-def check_output_priority() -> Callable[[dict], Optional[str]]:
+def check_output_priority() -> Callable[[dict], str | None]:
     valid = {"P1", "P2", "P3", "P4"}
-    def _check(output: dict) -> Optional[str]:
+
+    def _check(output: dict) -> str | None:
         priority = output.get("priority")
         if priority and priority not in valid:
             return f"Prioridad no válida: {priority}"
         return None
+
     return _check
 
 

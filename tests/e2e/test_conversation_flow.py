@@ -1,4 +1,5 @@
 """Flujo conversacional completo de extremo a extremo."""
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -13,8 +14,9 @@ def _client(app, key):
 
 def test_full_incident_flow(client):
     """Incidente -> clasificacion -> diagnostico -> ticket -> resolucion."""
-    body = client.post("/api/chat",
-                       json={"message": "No puedo entrar al CRM, mi cuenta está bloqueada"}).json()
+    body = client.post(
+        "/api/chat", json={"message": "No puedo entrar al CRM, mi cuenta está bloqueada"}
+    ).json()
     assert body["status"] == "resolved"
     assert body["ticket"] is not None
     assert len(body["messages"]) >= 4
@@ -24,8 +26,7 @@ def test_full_incident_flow(client):
 
 def test_full_knowledge_flow(client):
     """Consulta de conocimiento -> RAG -> respuesta con pasos."""
-    body = client.post("/api/chat",
-                       json={"message": "¿Cómo restablezco mi contraseña paso a paso?"}).json()
+    body = client.post("/api/chat", json={"message": "¿Cómo restablezco mi contraseña paso a paso?"}).json()
     assert body["status"] == "resolved"
     kb = [m for m in body["messages"] if m["agent"] == "conocimiento"]
     assert kb and kb[0]["data"].get("steps")
@@ -45,8 +46,7 @@ def test_escalation_flow(client):
 
 
 def test_dashboard_reflects_activity(client):
-    for msg in ["No puedo entrar al CRM", "¿cómo restablezco mi contraseña?",
-                "Quiero una laptop nueva"]:
+    for msg in ["No puedo entrar al CRM", "¿cómo restablezco mi contraseña?", "Quiero una laptop nueva"]:
         client.post("/api/chat", json={"message": msg})
     dims = client.get("/api/dashboard").json()["dimensions"]
     assert dims["business"]["total_interactions"] >= 3
@@ -67,6 +67,7 @@ def test_health_stays_up_under_traffic(client):
 def test_no_pii_leaks_across_the_full_flow(client, tmp_path):
     """Regresion integral: la PII no debe llegar al log ni a la telemetria."""
     from backend.llmops.logging import setup_logging
+
     logfile = tmp_path / "e2e.log"
     setup_logging(level="INFO", log_file=str(logfile))
     client.post("/api/chat", json={"message": "mi correo es ana@corp.com y no puedo entrar al CRM"})

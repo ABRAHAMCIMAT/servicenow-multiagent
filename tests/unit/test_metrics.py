@@ -1,4 +1,5 @@
 """Pruebas del motor de metricas (las 4 dimensiones del dashboard)."""
+
 import json
 
 import pytest
@@ -9,17 +10,27 @@ def events_file(tmp_path):
     """Log de telemetria con eventos representativos."""
     path = tmp_path / "tel.jsonl"
     events = [
-        {"type": "conversation", "intent": "incident", "status": "resolved",
-         "resolved_without_human": True, "ticket_number": None, "e2e_ms": 1000},
-        {"type": "conversation", "intent": "knowledge", "status": "escalated",
-         "resolved_without_human": False, "ticket_number": "INC1",
-         "escalated": True, "e2e_ms": 3000},
+        {
+            "type": "conversation",
+            "intent": "incident",
+            "status": "resolved",
+            "resolved_without_human": True,
+            "ticket_number": None,
+            "e2e_ms": 1000,
+        },
+        {
+            "type": "conversation",
+            "intent": "knowledge",
+            "status": "escalated",
+            "resolved_without_human": False,
+            "ticket_number": "INC1",
+            "escalated": True,
+            "e2e_ms": 3000,
+        },
         {"type": "agent_span", "agent": "clasificador", "duration_ms": 100},
         {"type": "agent_span", "agent": "diagnostico", "duration_ms": 200},
-        {"type": "llm_call", "model": "m", "prompt_tokens": 100,
-         "completion_tokens": 50, "cost_usd": 0.001},
-        {"type": "llm_call", "model": "m", "prompt_tokens": 50,
-         "completion_tokens": 25, "cost_usd": 0.002},
+        {"type": "llm_call", "model": "m", "prompt_tokens": 100, "completion_tokens": 50, "cost_usd": 0.001},
+        {"type": "llm_call", "model": "m", "prompt_tokens": 50, "completion_tokens": 25, "cost_usd": 0.002},
         {"type": "rag_hit", "found": True},
         {"type": "rag_hit", "found": False},
         {"type": "escalation", "summary_sent": True},
@@ -32,6 +43,7 @@ def events_file(tmp_path):
 @pytest.fixture
 def engine(events_file):
     from backend.observability.metrics import MetricsEngine
+
     return MetricsEngine(log_path=str(events_file))
 
 
@@ -42,11 +54,13 @@ def test_load_events_reads_all(engine):
 
 def test_load_events_missing_file_returns_empty(tmp_path):
     from backend.observability.metrics import MetricsEngine
+
     assert MetricsEngine(log_path=str(tmp_path / "no.jsonl")).load_events() == []
 
 
 def test_load_events_ignores_corrupt_lines(tmp_path):
     from backend.observability.metrics import MetricsEngine
+
     path = tmp_path / "t.jsonl"
     path.write_text('{"type": "x"}\nNO ES JSON\n\n{"type": "y"}\n')
     events = MetricsEngine(log_path=str(path)).load_events()
@@ -145,8 +159,7 @@ def test_orchestration_totals(engine):
 # -- full report -------------------------------------------------------------
 def test_full_report_has_four_dimensions(engine):
     r = engine.full_report()
-    assert set(r) >= {"generated_at", "event_count", "business",
-                      "performance", "costs", "orchestration"}
+    assert set(r) >= {"generated_at", "event_count", "business", "performance", "costs", "orchestration"}
 
 
 def test_full_report_event_count(engine):
@@ -156,6 +169,7 @@ def test_full_report_event_count(engine):
 # -- robustez ----------------------------------------------------------------
 def test_empty_log_yields_zeros(tmp_path):
     from backend.observability.metrics import MetricsEngine
+
     r = MetricsEngine(log_path=str(tmp_path / "vacio.jsonl")).full_report()
     assert r["event_count"] == 0
     assert r["business"]["total_interactions"] == 0
@@ -167,6 +181,7 @@ def test_empty_log_yields_zeros(tmp_path):
 # -- dashboard api -----------------------------------------------------------
 def test_dashboard_payload_shape(engine):
     from backend.observability.dashboard_api import build_dashboard_payload
+
     payload = build_dashboard_payload(engine)
     assert set(payload["dimensions"]) == {"business", "performance", "costs", "orchestration"}
     assert payload["event_count"] == 10 and "generated_at" in payload

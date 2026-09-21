@@ -4,6 +4,7 @@ Redaccion de PII para logs y telemetria (Fase 0).
 Detecta y enmascara correos, telefonos, tarjetas, IPs y SSN antes de escribir
 cualquier traza. El texto crudo del usuario nunca se persiste en logs.
 """
+
 from __future__ import annotations
 
 import re
@@ -61,6 +62,7 @@ _TRUE = ("1", "true", "yes", "on")
 def log_user_content_enabled() -> bool:
     """Indica si se permite registrar contenido del usuario (opt-in)."""
     import os
+
     return os.getenv("LOG_USER_CONTENT", "false").strip().lower() in _TRUE
 
 

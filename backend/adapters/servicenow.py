@@ -14,20 +14,18 @@ The adapter exposes the exact operations the agents need:
   - lookup manager in org structure
   - execute catalog tasks (unlock AD, reset password, assign license)
 """
+
 from __future__ import annotations
 
 import os
-from typing import Optional
-
-from .. import config
-from ..llmops.logging import get_logger
-
-log = get_logger("adapter.servicenow")
 
 import httpx
 
-from ..core.models import Ticket, Priority
+from .. import config
+from ..core.models import Ticket
+from ..llmops.logging import get_logger
 
+log = get_logger("adapter.servicenow")
 
 # ---------------------------------------------------------------------------
 # Demo knowledge base (RAG corpus)
@@ -99,9 +97,11 @@ class ServiceNowAdapter:
         if not self.live and any((self.instance, self.user, self.password, self.token)):
             log.warning(
                 "configuracion ServiceNow incompleta: se usara modo DEMO",
-                extra={"has_instance": bool(self.instance),
-                       "has_user": bool(self.user),
-                       "has_token": bool(self.token)},
+                extra={
+                    "has_instance": bool(self.instance),
+                    "has_user": bool(self.user),
+                    "has_token": bool(self.token),
+                },
             )
         if config.IS_PRODUCTION and not self.live:
             raise RuntimeError("ServiceNow debe estar en modo LIVE en produccion.")
@@ -116,6 +116,7 @@ class ServiceNowAdapter:
         if self.token:
             return {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
         import base64
+
         auth = base64.b64encode(f"{self.user}:{self.password}".encode()).decode()
         return {"Authorization": f"Basic {auth}", "Accept": "application/json"}
 
@@ -148,29 +149,38 @@ class ServiceNowAdapter:
         if self.live:
             r = self._client.patch(
                 self._url(f"table/incident/{ticket.number}"),
-                headers=self._headers(), json=fields,
+                headers=self._headers(),
+                json=fields,
             )
             r.raise_for_status()
         else:
             for k, v in fields.items():
                 if hasattr(ticket, k):
                     setattr(ticket, k, v)
-        ticket.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+        ticket.updated_at = (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+        )
         return ticket
 
-    def get_incident(self, number: str) -> Optional[Ticket]:
+    def get_incident(self, number: str) -> Ticket | None:
         if self.live:
-            r = self._client.get(self._url(f"table/incident?sysparm_query=number={number}"), headers=self._headers())
+            r = self._client.get(
+                self._url(f"table/incident?sysparm_query=number={number}"), headers=self._headers()
+            )
             r.raise_for_status()
             res = r.json()["result"]
             if not res:
                 return None
             d = res[0]
             return Ticket(
-                number=d.get("number"), short_description=d.get("short_description"),
-                description=d.get("description"), state=d.get("state"),
-                category=d.get("category"), subcategory=d.get("subcategory"),
-                assignment_group=d.get("assignment_group"), assigned_to=d.get("assigned_to"),
+                number=d.get("number"),
+                short_description=d.get("short_description"),
+                description=d.get("description"),
+                state=d.get("state"),
+                category=d.get("category"),
+                subcategory=d.get("subcategory"),
+                assignment_group=d.get("assignment_group"),
+                assigned_to=d.get("assigned_to"),
                 caller=d.get("caller_id"),
             )
         return self._tickets.get(number)
@@ -193,7 +203,7 @@ class ServiceNowAdapter:
         return [a for _, a in scored[:top_k]]
 
     # -- org structure ------------------------------------------------------
-    def get_manager(self, employee: str) -> Optional[dict]:
+    def get_manager(self, employee: str) -> dict | None:
         if self.live:
             # sys_user table lookup — simplified
             r = self._client.get(
@@ -217,25 +227,43 @@ class ServiceNowAdapter:
         if self.live:
             # would call a custom scripted REST API / flow
             pass
-        return {"success": True, "action": "unlock_account", "target": target,
-                "message": f"Cuenta '{target}' desbloqueada. Se envió un código temporal."}
+        return {
+            "success": True,
+            "action": "unlock_account",
+            "target": target,
+            "message": f"Cuenta '{target}' desbloqueada. Se envió un código temporal.",
+        }
 
     def reset_password(self, target: str) -> dict:
         if self.live:
             pass
-        return {"success": True, "action": "reset_password", "target": target,
-                "message": f"Contraseña de '{target}' restablecida. Código temporal enviado."}
+        return {
+            "success": True,
+            "action": "reset_password",
+            "target": target,
+            "message": f"Contraseña de '{target}' restablecida. Código temporal enviado.",
+        }
 
     def assign_license(self, software: str, user: str) -> dict:
         if self.live:
             pass
-        return {"success": True, "action": "assign_license", "software": software, "user": user,
-                "message": f"Licencia de {software} asignada a {user}."}
+        return {
+            "success": True,
+            "action": "assign_license",
+            "software": software,
+            "user": user,
+            "message": f"Licencia de {software} asignada a {user}.",
+        }
 
     def request_approval(self, resource: str, manager: str, channel: str = "slack") -> dict:
         """Send approval request to manager via Slack/Teams/WhatsApp."""
         if self.live:
             pass
-        return {"success": True, "action": "request_approval", "resource": resource,
-                "manager": manager, "channel": channel,
-                "message": f"Solicitud de aprobación para '{resource}' enviada a {manager} por {channel}."}
+        return {
+            "success": True,
+            "action": "request_approval",
+            "resource": resource,
+            "manager": manager,
+            "channel": channel,
+            "message": f"Solicitud de aprobación para '{resource}' enviada a {manager} por {channel}.",
+        }

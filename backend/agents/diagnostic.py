@@ -5,6 +5,7 @@ Revisa el estado real de la cuenta/sistema del usuario para determinar la
 causa raíz (p. ej. cuenta bloqueada por intentos fallidos). En modo demo
 simula el diagnóstico; en modo live consulta ServiceNow / AD.
 """
+
 from __future__ import annotations
 
 from ..core.llm import LLM

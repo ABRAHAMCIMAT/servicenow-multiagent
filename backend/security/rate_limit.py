@@ -9,6 +9,7 @@ El limite se aplica por credencial cuando existe (hash de la clave) y cae a
 la IP del cliente en caso contrario, de modo que las peticiones anonimas
 tambien quedan acotadas.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -48,9 +49,7 @@ limiter = RateLimiter(
 
 def identity_for(request: Request) -> str:
     """Identidad del solicitante: credencial hasheada o IP."""
-    raw = (request.headers.get("x-api-key")
-           or request.headers.get("authorization")
-           or "")
+    raw = request.headers.get("x-api-key") or request.headers.get("authorization") or ""
     if raw:
         return "key:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
     host = request.client.host if request.client else "anon"

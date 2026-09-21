@@ -11,11 +11,13 @@ Patrones aplicados:
   - Fail-fast para errores de configuración; degradación elegante para
     errores de proveedor.
 """
+
 from __future__ import annotations
 
 import random
 import time
-from typing import Any, Callable, Optional, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from .logging import get_logger
 
@@ -61,7 +63,7 @@ def retry(
     base_delay: float = 0.5,
     max_delay: float = 8.0,
     retry_on: tuple = (RetryableError, TimeoutError, ConnectionError),
-    logger: Optional[Any] = None,
+    logger: Any | None = None,
 ) -> T:
     """Ejecuta `func` con reintentos y backoff exponencial + jitter.
 
@@ -91,8 +93,12 @@ def retry(
             delay += random.uniform(0, delay * 0.1)  # jitter
             (logger or log).warning(
                 "reintentando tras error transitorio",
-                extra={"attempt": attempt, "max_attempts": max_attempts,
-                       "delay_s": round(delay, 2), "error": str(e)},
+                extra={
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "delay_s": round(delay, 2),
+                    "error": str(e),
+                },
             )
             time.sleep(delay)
 
@@ -104,7 +110,7 @@ def safe_call(
     func: Callable[..., T],
     *,
     default: Any = None,
-    logger: Optional[Any] = None,
+    logger: Any | None = None,
     error_type: type = Exception,
 ) -> T:
     """Ejecuta `func` y devuelve `default` si falla, registrando el error.
