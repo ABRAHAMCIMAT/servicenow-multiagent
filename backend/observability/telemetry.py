@@ -18,6 +18,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from ..config import TELEMETRY_LOG
+from ..security.redaction import redact_text
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -31,9 +34,7 @@ class Telemetry:
     """Collects standardized JSON events and forwards to Langfuse if configured."""
 
     def __init__(self, log_path: Optional[str] = None, langfuse: Optional[Any] = None):
-        self.log_path = log_path or os.getenv(
-            "TELEMETRY_LOG", "/agent/task/servicenow-multiagent/backend/data/telemetry.jsonl"
-        )
+        self.log_path = log_path or TELEMETRY_LOG
         self.langfuse = langfuse  # optional Langfuse client
         self._events: list[dict] = []
         self._active_traces: dict[str, dict] = {}  # trace_id -> trace meta
@@ -44,7 +45,15 @@ class Telemetry:
         event.setdefault("ts", _now_iso())
         event.setdefault("ts_ms", _now_ms())
         event.setdefault("event_id", uuid.uuid4().hex[:12])
+        # Fase 0: redactar cualquier campo de texto libre antes de persistir
+        for _k in ("message", "user_message", "query", "content", "text"):
+            if isinstance(event.get(_k), str):
+                event[_k] = redact_text(event[_k])
         self._events.append(event)
+        # Fase 0: ring buffer para evitar fuga de memoria en procesos largos
+        max_events = int(os.getenv("TELEMETRY_MAX_EVENTS", "5000"))
+        if len(self._events) > max_events:
+            del self._events[: len(self._events) - max_events]
         if self.log_path:
             try:
                 os.makedirs(os.path.dirname(self.log_path), exist_ok=True)

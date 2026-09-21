@@ -6,6 +6,14 @@
 <title>ServiceNow Multi-Agent · Asistente de TI</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
+.api-key {
+  width: 170px; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06);
+  color: #e8ecf3; font-size: 13px; font-family: inherit; margin-right: 10px; outline: none;
+}
+.api-key:focus { border-color: #6c8cff; }
+.api-key::placeholder { color: #8b94a7; }
+
   :root {
     --bg: #0f1115; --bg-2: #161a22; --panel: #1b2029; --border: #2a3140;
     --text: #e8ecf3; --muted: #8b94a7; --accent: #6c8cff; --accent-2: #9b6cff;
@@ -95,6 +103,7 @@
     <button class="tab active" data-view="chat" onclick="switchView('chat')">💬 Chat</button>
     <button class="tab" data-view="dash" onclick="switchView('dash')">📊 Dashboard</button>
   </div>
+  <input id="api-key" class="api-key" type="password" placeholder="API key" title="Credencial de acceso (Fase 0: seguridad)" autocomplete="off" />
   <div class="status-pill"><span class="dot"></span><span id="status">Conectando…</span></div>
 </header>
 
@@ -211,7 +220,9 @@ async function send() {
   input.value = ''; input.style.height = 'auto';
   addMessage('', text, true); addTyping(); sendBtn.disabled = true;
   try {
-    const res = await fetch(API + '/api/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: text, caller: 'Carlos Carballo'}) });
+    const res = await fetch(API + '/api/chat', { method: 'POST', headers: authHeaders(), body: JSON.stringify({message: text, caller: 'Carlos Carballo'}) });
+    if (res.status === 401 || res.status === 403) { removeTyping(); addMessage('coordinador', ' Necesitas una API key válida. Configúrala en el campo superior (Fase 0: seguridad).'); sendBtn.disabled = false; return; }
+    if (res.status === 429) { removeTyping(); addMessage('coordinador', ' Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.'); sendBtn.disabled = false; return; }
     const data = await res.json();
     removeTyping();
     for (const m of data.messages) { if (m.role === 'assistant' && m.content) addMessage(m.agent, m.content); }
@@ -225,7 +236,8 @@ document.querySelectorAll('.suggestion').forEach(btn => { btn.addEventListener('
 
 async function loadDashboard() {
   try {
-    const res = await fetch(API + '/api/dashboard');
+    const res = await fetch(API + '/api/dashboard', { headers: authHeaders() });
+    if (res.status === 401 || res.status === 403) { document.getElementById('dash-sub').textContent = '🔒 Se requiere API key con rol agent (configúrala arriba).'; return; }
     const data = await res.json();
     const d = data.dimensions, b = d.business, p = d.performance, c = d.costs, o = d.orchestration;
     document.getElementById('dash-sub').textContent = 'Actualizado: ' + new Date(data.generated_at).toLocaleString() + ' · ' + data.event_count + ' eventos';
@@ -246,8 +258,29 @@ async function loadDashboard() {
   } catch (e) { document.getElementById('dash-sub').textContent = 'No se pudo cargar el dashboard. ¿Está corriendo el backend?'; }
 }
 
+// Fase 0: la API key se guarda en localStorage y se envía en cada llamada.
+function getApiKey() { return localStorage.getItem('snow_api_key') || ''; }
+function authHeaders() {
+  const h = {'Content-Type': 'application/json'};
+  const k = getApiKey();
+  if (k) h['X-API-Key'] = k;
+  return h;
+}
+const keyInput = document.getElementById('api-key');
+if (keyInput) {
+  keyInput.value = getApiKey();
+  keyInput.addEventListener('change', () => {
+    localStorage.setItem('snow_api_key', keyInput.value.trim());
+    checkHealth();
+  });
+}
+
 async function checkHealth() {
-  try { const res = await fetch(API + '/api/health'); const d = await res.json(); statusEl.textContent = 'Conectado · ' + (d.servicenow_mode === 'live' ? 'ServiceNow LIVE' : 'Modo demo') + ' · ' + d.llm_provider; }
+  try {
+    const res = await fetch(API + '/api/health');
+    if (!res.ok) throw new Error('health');
+    statusEl.textContent = 'Backend disponible' + (getApiKey() ? ' · API key configurada' : ' · ⚠️ sin API key');
+  }
   catch (e) { statusEl.textContent = 'Backend no disponible'; }
 }
 checkHealth();

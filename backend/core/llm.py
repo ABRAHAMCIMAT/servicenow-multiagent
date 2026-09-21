@@ -19,6 +19,8 @@ from typing import Any, Optional
 
 import httpx
 
+from ..llmops.errors import RetryableError, retry
+
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -27,7 +29,7 @@ import httpx
 class LLMConfig:
     provider: str = "jan"            # jan | openai | mock
     base_url: str = "http://localhost:1337/v1"
-    api_key: str = "jan"             # Jan ignores the key; OpenAI needs a real one
+    api_key: str = ""                # Fase 0: sin valor por defecto; Jan ignora la clave
     model: str = "gpt-oss:latest"    # Jan default model; override per provider
     temperature: float = 0.2
     max_tokens: int = 1200
@@ -37,11 +39,14 @@ class LLMConfig:
     def from_env(cls) -> "LLMConfig":
         provider = os.getenv("LLM_PROVIDER", "jan").lower()
         base_url = os.getenv("LLM_BASE_URL", "http://localhost:1337/v1")
-        api_key = os.getenv("LLM_API_KEY", "jan")
+        api_key = os.getenv("LLM_API_KEY", "")
         model = os.getenv("LLM_MODEL", "gpt-oss:latest")
         if provider == "openai":
             base_url = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
             model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+            # Fase 0: fail-fast si falta la clave de OpenAI
+            if not api_key:
+                raise RuntimeError("LLM_API_KEY es obligatoria para el proveedor 'openai'.")
         return cls(provider=provider, base_url=base_url, api_key=api_key, model=model)
 
 
@@ -178,14 +183,31 @@ class OpenAICompatLLM:
         }
         if kw.get("json_mode"):
             payload["response_format"] = {"type": "json_object"}
-        resp = self._client.post(
-            f"{self.config.base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.config.api_key}"},
-            json=payload,
+
+        def _post():
+            resp = self._client.post(
+                f"{self.config.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.config.api_key}"},
+                json=payload,
+            )
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                # Fase 0: errores transitorios se reintentan con backoff + jitter
+                if e.response.status_code in (429, 500, 502, 503, 504):
+                    raise RetryableError(
+                        f"LLM transitorio: HTTP {e.response.status_code}"
+                    ) from e
+                raise
+            return resp.json()["choices"][0]["message"]["content"]
+
+        # Fase 0: retry() con backoff exponencial + jitter (antes definido y no usado)
+        return retry(
+            _post,
+            max_attempts=3,
+            base_delay=0.5,
+            retry_on=(httpx.TransportError, httpx.TimeoutException, RetryableError),
         )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
 
 
 # ---------------------------------------------------------------------------

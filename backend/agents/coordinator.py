@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ..core.llm import LLM
 from ..llmops.logging import get_logger
+from ..security.redaction import preview
 from ..core.models import Conversation, Intent, Ticket
 from ..adapters.servicenow import ServiceNowAdapter
 from ..adapters.notifications import NotificationAdapter
@@ -36,7 +37,10 @@ class CoordinatorAgent:
         self.metrics = MetricsAgent()
 
     def handle(self, user_message: str, caller: str = "Usuario") -> Conversation:
-        log.info("conversación iniciada", extra={"caller": caller, "user_message": user_message[:100]})
+        # Fase 0: nunca registrar el mensaje crudo del usuario
+        # (preview() lo omite salvo LOG_USER_CONTENT=true)
+        log.info("conversación iniciada",
+                 extra={"caller": caller, "user_message": preview(user_message, 120)})
         conv = Conversation(user_message=user_message)
         conv.add("coordinador", "🤖 Recibí tu solicitud. Voy a analizarla y enrutarla al agente adecuado.")
 

@@ -20,6 +20,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from ..security.redaction import redact_text
+
 
 class JsonFormatter(logging.Formatter):
     """Formatea los registros como objetos JSON de una sola línea."""
@@ -29,13 +31,16 @@ class JsonFormatter(logging.Formatter):
             "ts": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            # Fase 0: redaccion de PII en el origen (defensa en profundidad)
+            "message": redact_text(record.getMessage()),
         }
         # Añadir contexto extra (conversation_id, trace_id, agent, etc.)
         for key in ("conversation_id", "trace_id", "agent", "intent",
-                    "duration_ms", "status", "model", "provider", "tokens"):
+                    "duration_ms", "status", "model", "provider", "tokens",
+                    "user_message", "message_preview", "caller"):
             if hasattr(record, key):
-                entry[key] = getattr(record, key)
+                value = getattr(record, key)
+                entry[key] = redact_text(value) if isinstance(value, str) else value
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
         return json.dumps(entry, ensure_ascii=False)

@@ -13,6 +13,8 @@ from typing import Optional
 
 import httpx
 
+from .. import config
+
 
 class NotificationAdapter:
     def __init__(self):
@@ -21,6 +23,14 @@ class NotificationAdapter:
         self.teams_webhook = os.getenv("TEAMS_WEBHOOK_URL", "")
         self.whatsapp_url = os.getenv("WHATSAPP_API_URL", "")
         self.live = bool(self.slack_webhook or self.teams_webhook or self.whatsapp_url)
+        # Fase 0: en produccion el canal elegido debe tener su webhook configurado
+        if config.IS_PRODUCTION:
+            _required = {"slack": self.slack_webhook, "teams": self.teams_webhook,
+                         "whatsapp": self.whatsapp_url}
+            if not _required.get(self.channel):
+                raise RuntimeError(
+                    f"NOTIFY_CHANNEL='{self.channel}' requiere su webhook en produccion."
+                )
         self._client = httpx.Client(timeout=20.0)
 
     def send(self, to: str, subject: str, body: str, channel: Optional[str] = None) -> dict:

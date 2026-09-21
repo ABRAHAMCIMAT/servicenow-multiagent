@@ -1,0 +1,32 @@
+# Datos de runtime (nunca al repo)
+backend/data/
+*.jsonl
+*.log
+*.sqlite
+*.db
+
+# Entornos y secretos
+.env
+.env.*
+!.env.example
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build / sistema
+dist/
+build/
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/

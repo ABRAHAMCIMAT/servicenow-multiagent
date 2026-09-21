@@ -19,6 +19,11 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+from .. import config
+from ..llmops.logging import get_logger
+
+log = get_logger("adapter.servicenow")
+
 import httpx
 
 from ..core.models import Ticket, Priority
@@ -90,6 +95,16 @@ class ServiceNowAdapter:
         self.password = os.getenv("SNOW_PASSWORD", "")
         self.token = os.getenv("SNOW_TOKEN", "")
         self.live = bool(self.instance and (self.user or self.token))
+        # Fase 0: no degradar a DEMO en silencio si la configuracion esta incompleta
+        if not self.live and any((self.instance, self.user, self.password, self.token)):
+            log.warning(
+                "configuracion ServiceNow incompleta: se usara modo DEMO",
+                extra={"has_instance": bool(self.instance),
+                       "has_user": bool(self.user),
+                       "has_token": bool(self.token)},
+            )
+        if config.IS_PRODUCTION and not self.live:
+            raise RuntimeError("ServiceNow debe estar en modo LIVE en produccion.")
         self._client = httpx.Client(timeout=30.0) if self.live else None
         # demo state
         self._tickets: dict[str, Ticket] = {}

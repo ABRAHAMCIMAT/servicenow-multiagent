@@ -17,12 +17,12 @@ import os
 from collections import Counter, defaultdict
 from typing import Any, Optional
 
+from ..config import TELEMETRY_LOG
+
 
 class MetricsEngine:
     def __init__(self, log_path: Optional[str] = None):
-        self.log_path = log_path or os.getenv(
-            "TELEMETRY_LOG", "/agent/task/servicenow-multiagent/backend/data/telemetry.jsonl"
-        )
+        self.log_path = log_path or TELEMETRY_LOG
 
     # -- loading ------------------------------------------------------------
     def load_events(self) -> list[dict]:

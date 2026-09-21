@@ -98,7 +98,9 @@ let intentChart, latencyChart;
 
 async function load() {
   try {
-    const res = await fetch('/api/dashboard');
+    const apiKey = localStorage.getItem('snow_api_key') || '';
+    const res = await fetch('/api/dashboard', { headers: apiKey ? {'X-API-Key': apiKey} : {} });
+    if (res.status === 401 || res.status === 403) { document.querySelector('.sub').textContent = ' Se requiere API key con rol agent.'; return; }
     const data = await res.json();
     render(data);
   } catch (e) {
