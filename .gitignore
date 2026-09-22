@@ -20,6 +20,10 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage.xml
+junit.xml
+htmlcov/
 
 # Build / sistema
 dist/

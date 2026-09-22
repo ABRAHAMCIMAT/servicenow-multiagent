@@ -22,6 +22,13 @@ Sistema multiagente conversacional que resuelve los problemas de un servicio de 
                   └──> 🚨 Agente de Escalación (transferencia a humano Nivel 2/3 con contexto)
 ```
 
+> Diagrama simplificado. La arquitectura completa (Contexto, Contenedores,
+> Componentes y Código, con diagramas) está en
+> **[docs/c4/00_INDICE.md](docs/c4/00_INDICE.md)** — incluye, por ejemplo,
+> que "Seguimiento" es un método del Coordinador, no una clase propia, y que
+> la escalación a Nivel 2/3 se dispara **automáticamente** (no requiere un
+> paso manual) cuando el sistema no puede resolver un caso.
+
 ## ✅ Problemas que resuelve
 
 | # | Problema | Solución |
@@ -57,11 +64,32 @@ El backend expone un **endpoint compatible con OpenAI** en `http://localhost:800
 1. Abre Jan → **Settings → Advanced → OpenAI-compatible API** (o añade un proveedor personalizado).
 2. Configura:
    - **Base URL:** `http://localhost:8000/v1`
-   - **API Key:** `jan` (cualquier valor)
+   - **API Key:** el valor de tu credencial `API_KEYS` (ver Seguridad más abajo) — Jan la envía como `Authorization: Bearer <valor>`.
    - **Model:** `servicenow-multiagent`
 3. Selecciona el modelo en el chat de Jan y conversa con el sistema multiagente.
 
 > Jan también puede ejecutar el LLM localmente (servidor `localhost:1337`) y este sistema lo usa como proveedor de razonamiento para los agentes.
+
+## 🔐 Seguridad (Fase 0)
+
+Todos los endpoints salvo `GET /api/health` exigen una credencial. Sin
+`API_KEYS` configurada, en modo `development` se genera una clave admin de
+un solo uso y se imprime en consola al arrancar; en `APP_ENV=production` el
+servidor **no arranca** sin `API_KEYS` ni `CORS_ORIGINS` explícitas.
+
+```bash
+export API_KEYS="mi_clave_admin:admin,mi_clave_agente:agent"
+curl -X POST http://localhost:8000/api/chat \
+  -H "X-API-Key: mi_clave_admin" -H "Content-Type: application/json" \
+  -d '{"message": "No puedo entrar al CRM"}'
+```
+
+Tres roles con jerarquía (`user` < `agent` < `admin`): `user` solo conversa
+(`/api/chat`, `/v1/chat/completions`); `agent` además lee conversaciones,
+el dashboard y genera matrices de pruebas; `admin` además ve
+`/api/health/detail` y los eventos crudos de telemetría. Ver
+[docs/llmops/07_GUARDRAILS.md](docs/llmops/07_GUARDRAILS.md) y
+[docs/SEGURIDAD.md](docs/SEGURIDAD.md).
 
 ## ⚙️ Configuración
 
@@ -72,18 +100,32 @@ El backend expone un **endpoint compatible con OpenAI** en `http://localhost:800
 | `LLM_PROVIDER` | `jan` \| `openai` \| `mock` | `jan` |
 | `LLM_BASE_URL` | URL del LLM compatible con OpenAI | `http://localhost:1337/v1` |
 | `LLM_MODEL` | Modelo a usar | `gpt-oss:latest` |
+| `LLM_API_KEY` | Clave para el proveedor LLM (obligatoria si `LLM_PROVIDER=openai`) | — |
 | `PORT` | Puerto del API | `8000` |
+| `APP_ENV` | `development` \| `production` — en `production`, `API_KEYS`/`CORS_ORIGINS` son obligatorias | `development` |
+| `API_KEYS` | Credenciales `clave:rol,clave:rol` (roles: `user`, `agent`, `admin`) | clave de desarrollo autogenerada |
+| `CORS_ORIGINS` | Orígenes permitidos, separados por comas (nunca `*`) | `localhost:8000` en dev |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW` | Límite de solicitudes por credencial/IP y ventana en segundos | `60` / `60` |
+| `LOG_USER_CONTENT` | Si `true`, registra el mensaje del usuario (redactado de PII) en logs | `false` |
+| `DATA_DIR` | Directorio de datos (logs, telemetría, conversaciones, auditoría) | `backend/data` |
+| `TELEMETRY_MAX_EVENTS` | Límite de eventos en memoria del buffer de telemetría | `5000` |
+| `ENABLE_LLM_JUDGE` | Activa el check LLM-as-judge en el Agente de Conocimiento (llamada LLM extra) | `false` |
 | `SNOW_INSTANCE` | Instancia de ServiceNow (vacío = demo) | — |
-| `SNOW_USER` / `SNOW_PASSWORD` | Credenciales ServiceNow | — |
+| `SNOW_USER` / `SNOW_PASSWORD` / `SNOW_TOKEN` | Credenciales ServiceNow | — |
 | `NOTIFY_CHANNEL` | `slack` \| `teams` \| `whatsapp` | `slack` |
 | `SLACK_WEBHOOK_URL` | Webhook de Slack | — |
 | `TEAMS_WEBHOOK_URL` | Webhook de Teams | — |
 | `WHATSAPP_API_URL` | API de WhatsApp | — |
 
+Copia `.env.example` a `.env` para arrancar con todos los defaults de modo demo.
+
 ### Modo live
 
 ```bash
 export LLM_PROVIDER=jan
+export APP_ENV=production
+export API_KEYS="clave_admin:admin"
+export CORS_ORIGINS="https://tu-dominio.com"
 export SNOW_INSTANCE=tuinstancia
 export SNOW_USER=admin
 export SNOW_PASSWORD=...
@@ -92,29 +134,51 @@ export SLACK_WEBHOOK_URL=https://hooks.slack.com/...
 ./scripts/run_live.sh
 ```
 
+### Docker (recomendado para producción)
+
+```bash
+cp .env.example .env   # o exporta API_KEYS/CORS_ORIGINS a mano
+docker compose up --build
+```
+
+Imagen multi-stage (< 300 MB), usuario sin privilegios, healthcheck
+integrado. Ver [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md).
+
 ## 📁 Estructura
 
 ```
 servicenow-multiagent/
 ├── backend/
-│   ├── core/          # LLM, modelos, estado
+│   ├── core/          # LLM, modelos, estado, ConversationStorage
 │   ├── agents/        # 8 agentes especializados
 │   ├── adapters/      # ServiceNow, notificaciones
-│   └── server.py      # API REST + endpoint OpenAI-compatible
+│   ├── security/       # Auth RBAC, rate limit, redacción PII, audit trail
+│   ├── llmops/         # Prompts, evals, guardrails, errores, patrones
+│   ├── config.py       # Configuración centralizada por entorno
+│   └── server.py       # API REST + endpoint OpenAI-compatible
 ├── frontend/
 │   └── index.html     # Chat web (estilo Jan)
-├── scripts/           # run_demo, run_live, demo interactiva
-└── docs/              # Documentación
+├── scripts/            # run_demo, run_live, demo interactiva, run_evals, generate_test_matrix
+├── tests/               # unit/ · integration/ · e2e/ (pytest)
+├── Dockerfile, docker-compose.yml
+└── docs/
+    ├── c4/              # Arquitectura — Modelo C4
+    └── llmops/          # Documentación por fase LLMOps
 ```
 
 ## 📡 API
 
-- `GET /api/health` — estado del sistema
-- `POST /api/chat` — enviar mensaje al multiagente
-- `GET /api/conversations` — listar conversaciones
-- `GET /api/conversations/{id}` — detalle
-- `POST /api/escalate` — escalar a humano
-- `POST /v1/chat/completions` — endpoint OpenAI-compatible (para Jan)
+| Endpoint | Rol mínimo |
+|---|---|
+| `GET /api/health` | público |
+| `GET /api/health/detail` | admin |
+| `POST /api/chat` | user |
+| `GET /api/conversations`, `GET /api/conversations/{id}` | agent |
+| `POST /api/escalate` | agent |
+| `GET /api/test-matrix/targets`, `POST /api/test-matrix` (HU-004) | agent |
+| `GET /api/dashboard` | agent |
+| `GET /api/dashboard/events` | admin |
+| `POST /v1/chat/completions` | user |
 
 ## 📊 Observabilidad y Dashboard (Control Total)
 
@@ -154,14 +218,6 @@ python3 -m backend.server
 # http://localhost:8000/dashboard
 ```
 
-### Endpoints de observabilidad
-
-| Endpoint | Descripción |
-|----------|-------------|
-| `GET /api/dashboard` | Métricas de las 4 dimensiones (JSON) |
-| `GET /api/dashboard/events` | Eventos de telemetría crudos (JSONL) |
-| `GET /api/health` | Estado del sistema + observabilidad |
-
 ### Configuración de Langfuse (opcional)
 
 ```bash
@@ -171,6 +227,38 @@ export LANGFUSE_HOST="https://cloud.langfuse.com"
 ```
 
 Con esto, cada traza/span/generación se envía a Langfuse para observabilidad LLM nativa (latencias por sub-agente, árboles de ejecución, costos automáticos).
+
+## ✅ Tests
+
+```bash
+pip install -r requirements-dev.txt
+export APP_ENV=development LLM_PROVIDER=mock
+pytest --cov=backend --cov-report=term-missing   # unit/ + integration/ + e2e/
+ruff check backend tests && ruff format --check backend tests
+mypy backend
+python3 scripts/run_evals.py   # test set de la Fase 4 (docs/llmops/04_EVALUACION.md)
+```
+
+CI (`.github/workflows/ci.yml`) corre lint, tipos, tests (matriz 3.11/3.12
+con cobertura), `bandit`/`pip-audit` y un build + smoke test de Docker en
+cada push/PR. Ver [docs/TESTING.md](docs/TESTING.md).
+
+## 🧪 Generación de matrices de pruebas (HU-004)
+
+Genera, con el LLM, casos de prueba **positivos, negativos y de borde/límite** para cualquier agente o endpoint del sistema, con un límite duro de **30 casos por lote**.
+
+```bash
+python3 scripts/generate_test_matrix.py --list-targets
+python3 scripts/generate_test_matrix.py --target clasificador --count 15
+```
+
+```bash
+curl -X POST http://localhost:8000/api/test-matrix \
+  -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"target": "guardrails_entrada", "count": 20}'
+```
+
+Funciona en modo demo (`LLM_PROVIDER=mock`) sin credenciales. Ver [docs/llmops/04_EVALUACION.md](docs/llmops/04_EVALUACION.md).
 
 ## 🧠 Mejores Prácticas LLMOps
 
@@ -183,11 +271,29 @@ sistemas multiagentes conversacionales, con documentación de cada fase en espa�
 | `logging.py` | Logging estructurado (JSON) con contexto por conversación |
 | `errors.py` | Excepciones tipadas, reintentos con backoff, degradación elegante |
 | `prompts.py` | Gestión y versionado de prompts (Registry) |
-| `evals.py` | Evaluación de salidas de agentes (checks deterministas) |
+| `evals.py` | Evaluación de salidas de agentes (checks deterministas + LLM-as-judge) |
 | `guardrails.py` | Validación de entrada/salida, anti inyección de prompt |
-| `patterns.py` | Patrones de diseño (Registry, Strategy, Chain, Facade, Observer) |
+| `patterns.py` | Patrones de diseño (Registry, Strategy) |
+| `test_matrix.py` | Generador de matrices de pruebas (HU-004) |
 
-### Documentación por fase (en español)
+### Paquete de seguridad (`backend/security/`, Fase 0)
+| Módulo | Función |
+|--------|---------|
+| `auth.py` | Autenticación por API key + RBAC (roles `user`/`agent`/`admin`) |
+| `rate_limit.py` | Rate limiting por credencial/IP (ventana deslizante) |
+| `redaction.py` | Redacción de PII (email, teléfono, tarjeta, IP, SSN) en logs/telemetría |
+| `audit.py` | Audit trail append-only (JSONL) de acciones sensibles |
+
+### Arquitectura (Modelo C4)
+| Nivel | Documento |
+|------|-----------|
+| Índice | [docs/c4/00_INDICE.md](docs/c4/00_INDICE.md) |
+| 1. Contexto | [docs/c4/01_CONTEXTO.md](docs/c4/01_CONTEXTO.md) |
+| 2. Contenedores | [docs/c4/02_CONTENEDORES.md](docs/c4/02_CONTENEDORES.md) |
+| 3. Componentes | [docs/c4/03_COMPONENTES.md](docs/c4/03_COMPONENTES.md) |
+| 4. Código | [docs/c4/04_CODIGO.md](docs/c4/04_CODIGO.md) |
+
+### Documentación por fase LLMOps (en español)
 | Fase | Documento |
 |------|-----------|
 | Índice | [docs/llmops/00_INDICE.md](docs/llmops/00_INDICE.md) |

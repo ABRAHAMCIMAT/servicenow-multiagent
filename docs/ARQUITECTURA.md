@@ -1,5 +1,11 @@
 # Arquitectura del Sistema Multiagente
 
+> Esta página es un resumen narrativo. Para el modelo C4 completo (Contexto
+> → Contenedores → Componentes → Código, con diagramas Mermaid), ver
+> **[docs/c4/00_INDICE.md](c4/00_INDICE.md)**. Para seguridad (auth RBAC,
+> rate limiting, redacción de PII, audit trail), ver
+> [docs/SEGURIDAD.md](SEGURIDAD.md).
+
 ## Visión general
 
 El sistema es un **orquestador de agentes especializados** que procesa solicitudes de soporte de TI en lenguaje natural y las resuelve de extremo a extremo, integrando ServiceNow, Active Directory, la base de conocimientos y canales de notificación (Slack/Teams/WhatsApp).
@@ -33,13 +39,23 @@ Punto de entrada único. Recibe el mensaje del usuario, orquesta a los agentes e
 - Busca en la base de conocimientos de ServiceNow.
 - Extrae la respuesta exacta y la explica **paso a paso** en el chat.
 
-### 7. Agente de Seguimiento
+### 7. Seguimiento (estado del ticket)
 - Notifica proactivamente cambios de estado, notas y solicitudes de información.
 - Reduce las llamadas de seguimiento ("¿Cómo va mi ticket?").
+- **Nota de código:** a diferencia de los otros 7, no es una clase propia —
+  es el método `CoordinatorAgent._handle_status()` (`backend/agents/coordinator.py`).
+  Se documenta como "agente" porque así se comporta desde el chat, no
+  porque `backend/agents/` tenga un `seguimiento.py`.
 
 ### 8. Agente de Escalación
 - Transfiere el caso a un agente humano (Nivel 2/3) en el Workspace de ServiceNow.
 - Entrega un **resumen ejecutivo del diagnóstico** para evitar transferencias frías.
+- Se invoca **automáticamente** desde el Coordinador cuando el diagnóstico no
+  tiene una acción automatizable o la ejecución falla — no es un paso manual.
+
+### Agente de Métricas *(no está en el listado de 8 "agentes de negocio" del README, pero sí es una clase real)*
+- `backend/agents/metrics.py` — responde consultas de KPIs/dashboard hechas
+  directamente en el chat ("muéstrame el dashboard de métricas").
 
 ## Flujo de procesamiento
 
@@ -54,8 +70,11 @@ Punto de entrada único. Recibe el mensaje del usuario, orquesta a los agentes e
    - Incidente/Solicitud/Aprobación → Diagnóstico → Políticas →
        ├─ Autoservicio → Ejecución → resuelto
        └─ Requiere aprobación → notificación al manager → awaiting_approval
-6. Si no se puede resolver → Escalación a humano con contexto
+6. Si no se puede resolver → Escalación automática a humano con contexto
 ```
+
+> Diagramas de secuencia detallados (camino feliz y escalación) en
+> [docs/c4/04_CODIGO.md](c4/04_CODIGO.md).
 
 ## Integraciones
 
@@ -66,9 +85,21 @@ Punto de entrada único. Recibe el mensaje del usuario, orquesta a los agentes e
 | Slack / Teams / WhatsApp | `NotificationAdapter` | LIVE (webhooks) / DEMO |
 | LLM (Jan / OpenAI) | `LLM` | jan / openai / mock |
 
+## Generación de matrices de pruebas (HU-004)
+
+Capacidad transversal de QA/desarrollo (`backend/llmops/test_matrix.py`), no
+parte del flujo conversacional de los 8 agentes: genera con el LLM casos de
+prueba positivos, negativos y de borde/límite (máx. 30 por lote) para un
+agente o endpoint registrado como objetivo. Disponible como script CLI
+(`scripts/generate_test_matrix.py`) y como endpoint (`POST /api/test-matrix`,
+rol `agent`). Ver [docs/llmops/04_EVALUACION.md](llmops/04_EVALUACION.md).
+
 ## Decisiones de diseño
 
 - **Modelo-agnóstico**: el LLM se abstrae detrás de una interfaz única; apunta a Jan, OpenAI o un mock.
 - **Demo sin credenciales**: todo corre en modo demo determinista para validar el flujo completo.
 - **Salida JSON estructurada**: los agentes devuelven JSON para facilitar la integración con ServiceNow.
 - **Endpoint OpenAI-compatible**: permite que Jan (o cualquier cliente) se conecte directamente.
+- **Seguridad por defecto en modo development, obligatoria en production**:
+  `APP_ENV=production` exige `API_KEYS`/`CORS_ORIGINS` explícitas (fail-fast
+  al arrancar) — nunca se degrada a un modo inseguro en silencio.

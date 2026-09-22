@@ -74,7 +74,12 @@ def check_prompt_injection() -> Callable[[str], str | None]:
     """Detecta intentos de inyección de prompt."""
     patterns = [
         r"ignora\s+(todas\s+las\s+)?(las\s+)?instrucciones",
-        r"ignore\s+(all\s+)?(previous\s+)?(the\s+)?instructions",
+        # hasta 3 palabras cualesquiera entre "ignore" e "instructions": cubre
+        # "ignore the previous instructions", "ignore my prior instructions",
+        # etc. -- un orden fijo de modificadores opcionales (all/previous/the)
+        # no cubria "the previous" (el adjetivo antes que el articulo).
+        # Regresion: tests/unit/test_guardrails.py.
+        r"ignore\s+(?:\w+\s+){0,3}instructions",
         r"system\s*:\s*",
         r"eres\s+ahora\s+",
         r"you\s+are\s+now\s+",

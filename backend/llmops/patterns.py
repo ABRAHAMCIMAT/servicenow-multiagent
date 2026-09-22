@@ -1,19 +1,26 @@
 """
 Patrones de diseño — mejores prácticas de software para mantenibilidad.
 
-Aplica patrones de diseño clásicos al sistema multiagente para mejorar el
-mantenimiento y la extensibilidad:
+Solo incluye los patrones que el sistema realmente usa en tiempo de
+ejecución (antes tambien tenia `Pipeline` y `EventBus`: se retiraron porque
+ningun modulo los importaba -- ver auditoria LLMOps, hallazgo "patterns.py
+sin usar"):
 
-  - Registry (registro): registro de agentes y estrategias.
-  - Strategy (estrategia): selección de proveedor LLM y de agentes.
-  - Chain of Responsibility (cadena): pipeline de procesamiento.
-  - Facade (fachada): interfaz unificada del sistema.
-  - Observer (observador): notificación de eventos (telemetría).
+  - Registry (registro): usado por `PromptRegistry` (llmops/prompts.py) y
+    `Evaluator` (llmops/evals.py) como almacen interno de prompts/checks
+    por clave.
+  - Strategy (estrategia): usado por `LLM` (core/llm.py) para seleccionar
+    la implementacion del proveedor (mock vs. OpenAI-compatible).
+
+Nota: `Guardrails` (llmops/guardrails.py) implementa su propia cadena de
+validaciones secuenciales (Chain of Responsibility) sin depender de este
+modulo, porque su contrato -- cada check devuelve un mensaje de error o
+`None`, y la cadena se detiene en el primer error -- no encaja con un
+`Pipeline` generico que transforma datos paso a paso.
 """
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable
 from typing import Any
 
@@ -54,34 +61,3 @@ class Strategy:
         if strategy is None:
             raise KeyError(f"Estrategia no registrada: {key}")
         return strategy(*args, **kwargs)
-
-
-class Pipeline:
-    """Cadena de procesamiento (patrón Chain of Responsibility)."""
-
-    def __init__(self):
-        self._steps: list[Callable] = []
-
-    def add(self, step: Callable) -> None:
-        self._steps.append(step)
-
-    def run(self, data: Any) -> Any:
-        result = data
-        for step in self._steps:
-            result = step(result)
-        return result
-
-
-class EventBus:
-    """Bus de eventos simple (patrón Observer)."""
-
-    def __init__(self):
-        self._listeners: dict[str, list[Callable]] = {}
-
-    def subscribe(self, event: str, listener: Callable) -> None:
-        self._listeners.setdefault(event, []).append(listener)
-
-    def publish(self, event: str, payload: Any = None) -> None:
-        for listener in self._listeners.get(event, []):
-            with contextlib.suppress(Exception):
-                listener(payload)  # un listener no debe romper el bus

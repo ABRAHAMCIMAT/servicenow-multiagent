@@ -238,6 +238,11 @@
 - Entrega un resumen ejecutivo del diagnóstico.
 - El agente humano recibe el contexto completo.
 - Registra el evento de escalación en telemetría.
+- **Se dispara automáticamente** desde `CoordinatorAgent` (sin paso manual)
+  cuando el diagnóstico no tiene una acción automatizable o la ejecución
+  falla — antes de la corrección de la auditoría LLMOps, `EscalationAgent`
+  solo era alcanzable vía `POST /api/escalate`, nunca desde el flujo
+  automático (ver `tests/integration/test_escalation.py`).
 
 ---
 
@@ -476,7 +481,7 @@
 ---
 
 ### HU-026 · Patrones de diseño para mantenibilidad
-**Como** desarrollador, **quiero** que el sistema aplique patrones de diseño (Registry, Strategy, Chain of Responsibility, Facade, Observer), **para** mejorar el mantenimiento y la extensibilidad.
+**Como** desarrollador, **quiero** que el sistema aplique patrones de diseño realmente usados en tiempo de ejecución (no declarados y sin conectar), **para** mejorar el mantenimiento y la extensibilidad sin código muerto.
 
 - **I**ndependiente: sí.
 - **N**egociable: patrones aplicados.
@@ -486,11 +491,15 @@
 - **T**estable: verificar uso de patrones en el código.
 
 **Criterios de aceptación:**
-- Registry para agentes, prompts y estrategias.
-- Strategy para selección de proveedor LLM y agentes.
-- Chain of Responsibility para pipeline y guardrails.
+- Registry: `PromptRegistry` y `Evaluator` delegan su almacenamiento en `patterns.Registry`.
+- Strategy: `LLM` selecciona la implementación del proveedor (mock/OpenAI-compatible) vía `patterns.Strategy`.
 - Facade para interfaz unificada.
-- Observer (EventBus) para telemetría y notificaciones.
+- `Guardrails` implementa su propia cadena de validaciones (Chain of Responsibility) sin depender de una clase genérica de `patterns.py` — su contrato (mensaje de error u `None`, corte en el primer fallo) no encaja con un `Pipeline` que transforma datos paso a paso.
+
+> **Nota:** esta historia se corrigió tras la auditoría LLMOps —
+> `patterns.py` incluía además `Pipeline` y `EventBus`, pero ningún módulo
+> los importaba en todo el repositorio (código muerto disfrazado de patrón
+> aplicado). Se retiraron en vez de forzar su uso artificialmente.
 
 ---
 
@@ -509,6 +518,25 @@
 - Todo en español.
 - Índice general con enlaces.
 - Referenciada desde el README.
+
+---
+
+### HU-028 · Generación de matrices de pruebas
+**Como** desarrollador/QA del sistema, **quiero** generar automáticamente una matriz de casos de prueba (positivos, negativos y de borde/límite) para cualquier agente o endpoint del sistema, **para** ampliar la cobertura de pruebas sin escribirlas todas a mano.
+
+- **I**ndependiente: sí — usa la capa LLM y el registro de objetivos, no depende de otras historias.
+- **N**egociable: el catálogo de objetivos (agentes/endpoints) es ampliable.
+- **V**aliosa: acelera la escritura de pruebas de regresión (ver `scripts/run_evals.py`, Fase 4 de Evaluación).
+- **E**stimable: 5 pts.
+- **S**mall: un módulo generador (`backend/llmops/test_matrix.py`) + un script CLI + un endpoint.
+- **T**estable: generar un lote para un objetivo y verificar que contiene los 3 tipos de caso.
+
+**Criterios de aceptación:**
+- Genera casos positivos, negativos y de borde/límite para un objetivo dado (agente o endpoint del sistema).
+- Límite duro de **30 casos por lote** — si el LLM devuelve más, se truncan (nunca se amplía el lote).
+- Disponible como script CLI (`scripts/generate_test_matrix.py`) y como endpoint (`POST /api/test-matrix`, rol `agent`), compartiendo la misma lógica de generación.
+- Protegido por la misma auth RBAC del resto de la API (Fase 0) y auditado (`security/audit.py`).
+- Funciona en modo demo (`LLM_PROVIDER=mock`) sin credenciales, igual que el resto del sistema.
 
 ---
 
@@ -543,5 +571,6 @@
 | HU-025 | Integración con Langfuse | Media | 3 |
 | HU-026 | Patrones de diseño | Media | 3 |
 | HU-027 | Documentación por fase (LLMOps) | Media | 3 |
+| HU-028 | Generación de matrices de pruebas | Alta | 5 |
 
-**Total estimado:** ~90 puntos · **27 historias** · **1 épica** · **Versión 2.0**
+**Total estimado:** ~95 puntos · **28 historias** · **1 épica** · **Versión 2.1**

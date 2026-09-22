@@ -14,7 +14,9 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
+
+from .patterns import Registry
 
 
 @dataclass
@@ -51,24 +53,30 @@ class PromptTemplate:
 
 
 class PromptRegistry:
-    """Registro central de prompts del sistema multiagente."""
+    """Registro central de prompts del sistema multiagente.
+
+    Composición del patrón Registry (llmops/patterns.py): el almacenamiento
+    por clave delega en una instancia genérica de `Registry` en vez de un
+    dict ad-hoc, para que el patrón documentado sea real y no decorativo.
+    """
 
     def __init__(self):
-        self._prompts: dict[str, PromptTemplate] = {}
+        self._registry = Registry()
 
     def register(self, template: PromptTemplate) -> None:
-        self._prompts[template.key] = template
+        self._registry.register(template.key, template)
 
     def get(self, key: str) -> PromptTemplate:
-        if key not in self._prompts:
-            raise KeyError(f"Prompt no registrado: {key}")
-        return self._prompts[key]
+        try:
+            return cast(PromptTemplate, self._registry.get(key))
+        except KeyError:
+            raise KeyError(f"Prompt no registrado: {key}") from None
 
     def render(self, key: str, **kwargs: Any) -> str:
         return self.get(key).render(**kwargs)
 
     def list(self) -> list[dict]:
-        return [p.to_dict() for p in self._prompts.values()]
+        return [p.to_dict() for p in self._registry.all().values()]
 
     def export(self) -> str:
         return json.dumps(self.list(), indent=2, ensure_ascii=False)

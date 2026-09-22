@@ -82,8 +82,19 @@ class ClassifierAgent:
         if data is None:
             data = self._heuristic(user_message)
 
-        # Evaluación de salida
+        # Evaluación de salida -- si algún check falla (esquema incompleto,
+        # intención fuera de catálogo), degrada a la heurística determinista
+        # en vez de solo registrar el fallo y seguir con datos sospechosos.
         eval_results = self.evaluator.run(data)
+        if not all(r.passed for r in eval_results):
+            failed = [r.name for r in eval_results if not r.passed]
+            log.warning(
+                "evaluación de salida falló; degradando a heurística",
+                extra={"failed_checks": ",".join(failed)},
+            )
+            data = self._heuristic(user_message)
+            eval_results = self.evaluator.run(data)
+
         log.info(
             "clasificación completada",
             extra={
@@ -200,20 +211,10 @@ class ClassifierAgent:
                 "keywords": ["hardware"],
                 "summary": "Solicitud de nuevo hardware",
             }
-        if "cómo" in m or "como" in m or "paso" in m or "guía" in m or "instrucciones" in m:
-            return {
-                "intent": "knowledge",
-                "category": "Knowledge",
-                "subcategory": "",
-                "assignment_group": "",
-                "impact": 3,
-                "urgency": 3,
-                "priority": "P4",
-                "confidence": 0.7,
-                "sentiment": "neutral",
-                "keywords": ["guía"],
-                "summary": "Consulta de base de conocimientos",
-            }
+        # El check de "estado" va antes que el generico de "como": un mensaje
+        # como "como va mi ticket?" contiene "como", asi que si el check de
+        # conocimiento fuera primero, el caso de estado del test set nunca
+        # se alcanzaria. Mismo orden que en MockLLM._mock_reply (core/llm.py).
         if "estado" in m or "cómo va" in m or "progreso" in m or "ticket" in m:
             return {
                 "intent": "status",
@@ -227,6 +228,20 @@ class ClassifierAgent:
                 "sentiment": "neutral",
                 "keywords": ["estado"],
                 "summary": "Consulta de estado de ticket",
+            }
+        if "cómo" in m or "como" in m or "paso" in m or "guía" in m or "instrucciones" in m:
+            return {
+                "intent": "knowledge",
+                "category": "Knowledge",
+                "subcategory": "",
+                "assignment_group": "",
+                "impact": 3,
+                "urgency": 3,
+                "priority": "P4",
+                "confidence": 0.7,
+                "sentiment": "neutral",
+                "keywords": ["guía"],
+                "summary": "Consulta de base de conocimientos",
             }
         return {
             "intent": "general",
