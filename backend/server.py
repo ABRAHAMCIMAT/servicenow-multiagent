@@ -22,11 +22,11 @@ import json
 import os
 import uuid
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import config
 from .adapters.notifications import NotificationAdapter
@@ -35,9 +35,11 @@ from .agents.coordinator import CoordinatorAgent
 from .agents.escalation import EscalationAgent
 from .core.llm import LLM
 from .core.state import ConversationStore
-from .llmops.errors import ValidationError
+from .core.storage import ConversationStorage
+from .llmops.errors import AgentError, LLMOpsError, ProviderError, ValidationError
 from .llmops.guardrails import default_guardrails
 from .llmops.logging import get_logger, setup_logging
+from .llmops.test_matrix import MAX_BATCH_SIZE, generate_batch, list_targets
 from .observability.dashboard_api import build_dashboard_payload
 from .observability.metrics import MetricsEngine
 from .observability.telemetry import get_telemetry
@@ -72,13 +74,46 @@ app.add_middleware(
 
 audit = get_audit_log()
 
+
+# --- manejo de errores tipados (LLMOps) -------------------------------------
+# Traduce la jerarquía de excepciones de llmops/errors.py a respuestas HTTP
+# coherentes, en vez de dejar que FastAPI devuelva un 500 genérico sin
+# distinguir "el proveedor externo falló" de "hay un bug en un agente".
+@app.exception_handler(ProviderError)
+async def provider_error_handler(request: Request, exc: ProviderError):
+    log.error("error del proveedor externo (LLM o ServiceNow)", extra={"error": str(exc)})
+    return JSONResponse(
+        {"error": "El proveedor externo (LLM o ServiceNow) no está disponible en este momento."},
+        status_code=502,
+    )
+
+
+@app.exception_handler(AgentError)
+async def agent_error_handler(request: Request, exc: AgentError):
+    log.error("error inesperado en un agente", extra={"error": str(exc)})
+    return JSONResponse(
+        {"error": "Ocurrió un error interno al procesar tu solicitud. Intenta de nuevo."},
+        status_code=500,
+    )
+
+
+@app.exception_handler(LLMOpsError)
+async def llmops_error_handler(request: Request, exc: LLMOpsError):
+    log.error(
+        "error LLMOps no manejado específicamente", extra={"error": str(exc), "type": type(exc).__name__}
+    )
+    return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 # --- singletons ------------------------------------------------------------
 llm = LLM()
 snow = ServiceNowAdapter()
 notifier = NotificationAdapter()
 coordinator = CoordinatorAgent(llm, snow, notifier)
 escalator = EscalationAgent(llm, snow)
-store = ConversationStore(persist_path=config.CONV_STORE)
+# Tipado con la interfaz (core/storage.py), no la clase concreta: un backend
+# real (Redis/Postgres) se enchufa aquí sin tocar el resto de server.py.
+store: ConversationStorage = ConversationStore(persist_path=config.CONV_STORE)
 
 # --- observability ---------------------------------------------------------
 telemetry = get_telemetry()
@@ -94,6 +129,11 @@ class ChatRequest(BaseModel):
 
 class EscalateRequest(BaseModel):
     conversation_id: str
+
+
+class TestMatrixRequest(BaseModel):
+    target: str
+    count: int = Field(default=15, ge=1, le=MAX_BATCH_SIZE)
 
 
 # --- Dashboard static files ------------------------------------------------
@@ -182,6 +222,34 @@ def escalate(req: EscalateRequest, principal: Principal = Depends(require_role(R
         metadata={"team": result.get("team", "") if isinstance(result, dict) else ""},
     )
     return result
+
+
+# --- Generador de matrices de pruebas (HU-004) ------------------------------
+@app.get("/api/test-matrix/targets", dependencies=[Depends(rate_limit_dependency)])
+def test_matrix_targets(principal: Principal = Depends(require_role(ROLE_AGENT))):
+    """Objetivos (agentes/endpoints) disponibles para generar casos de prueba."""
+    return {"targets": list_targets()}
+
+
+@app.post("/api/test-matrix", dependencies=[Depends(rate_limit_dependency)])
+def test_matrix(req: TestMatrixRequest, principal: Principal = Depends(require_role(ROLE_AGENT))):
+    """Genera un lote de hasta MAX_BATCH_SIZE casos de prueba (positivos,
+    negativos, de borde/límite) para el agente/endpoint indicado en `target`.
+    Los errores del proveedor LLM ya quedan cubiertos por el
+    @app.exception_handler(ProviderError) registrado arriba."""
+    try:
+        batch = generate_batch(llm, req.target, count=req.count)
+    except KeyError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    audit.record(
+        action="test_matrix.generate",
+        actor=principal.key_id,
+        target=req.target,
+        metadata={"count": req.count, "generated": batch["generated"]},
+    )
+    return batch
 
 
 # --- Dashboard API ---------------------------------------------------------

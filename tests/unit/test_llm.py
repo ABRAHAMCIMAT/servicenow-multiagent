@@ -152,8 +152,15 @@ def test_retries_on_transient_error(monkeypatch):
 
 
 def test_does_not_retry_on_400(monkeypatch):
-    """400 es error de cliente: reintentarlo no ayuda."""
+    """400 es error de cliente: reintentarlo no ayuda.
+
+    Se tipa como ProviderError (llmops/errors.py) en vez de dejar pasar el
+    httpx.HTTPStatusError crudo, para que el resto del sistema pueda
+    distinguir "el proveedor rechazó la solicitud" de un bug propio sin
+    importar httpx (ver auditoría LLMOps, jerarquía de excepciones).
+    """
     from backend.core.llm import LLMConfig, OpenAICompatLLM
+    from backend.llmops.errors import ProviderError
 
     calls = {"n": 0}
 
@@ -163,7 +170,7 @@ def test_does_not_retry_on_400(monkeypatch):
 
     impl = OpenAICompatLLM(LLMConfig(provider="openai", base_url="http://x/v1", api_key="k"))
     monkeypatch.setattr(impl._client, "post", fake_post)
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(ProviderError):
         impl.complete([{"role": "user", "content": "hola"}])
     assert calls["n"] == 1
 

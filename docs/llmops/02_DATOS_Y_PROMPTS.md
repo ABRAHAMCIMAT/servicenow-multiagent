@@ -25,10 +25,11 @@ Todos los prompts se centralizan en un `PromptRegistry` con:
 - **Renderizado parametrizado**: plantillas con variables tipadas.
 
 ### Prompts registrados
-| Clave | Versión | Descripción |
-|-------|---------|-------------|
-| `clasificador` | 1.0.0 | Triaje, categoría y prioridad SLA |
-| `conocimiento` | 1.0.0 | Respuesta RAG paso a paso |
+| Clave | Versión | Descripción | Usado por |
+|-------|---------|-------------|-----------|
+| `clasificador` | 1.0.0 | Triaje, categoría y prioridad SLA | `ClassifierAgent` |
+| `conocimiento` | 1.0.0 | Respuesta RAG paso a paso | `KnowledgeAgent` |
+| `generador_matriz_pruebas` | 1.0.0 | Casos positivos/negativos/de borde para un agente/endpoint (HU-004) | `backend/llmops/test_matrix.py` |
 
 ### Buenas prácticas de prompts aplicadas
 1. **Instrucciones claras y específicas** — cada agente tiene un rol definido.

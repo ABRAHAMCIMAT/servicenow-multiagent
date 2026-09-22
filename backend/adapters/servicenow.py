@@ -23,6 +23,7 @@ import httpx
 
 from .. import config
 from ..core.models import Ticket
+from ..llmops.errors import ProviderError, RetryableError, retry
 from ..llmops.logging import get_logger
 
 log = get_logger("adapter.servicenow")
@@ -123,6 +124,23 @@ class ServiceNowAdapter:
     def _url(self, path: str) -> str:
         return f"https://{self.instance}.service-now.com/api/now/{path}"
 
+    def _request(self, method: str, url: str, **kw) -> httpx.Response:
+        """Llamada HTTP a ServiceNow con reintentos ante errores transitorios
+        (timeout, red, 429, 5xx); los demás se traducen a ProviderError."""
+
+        def _call() -> httpx.Response:
+            try:
+                resp = self._client.request(method, url, headers=self._headers(), **kw)
+            except httpx.TransportError as e:
+                raise RetryableError(f"error de red hacia ServiceNow: {e}") from e
+            if resp.status_code == 429 or resp.status_code >= 500:
+                raise RetryableError(f"ServiceNow devolvió {resp.status_code}")
+            if resp.status_code >= 400:
+                raise ProviderError(f"ServiceNow devolvió {resp.status_code}: {resp.text[:300]}")
+            return resp
+
+        return retry(_call, max_attempts=3, base_delay=0.5, max_delay=8.0, logger=log)
+
     # -- incidents ----------------------------------------------------------
     def create_incident(self, ticket: Ticket) -> Ticket:
         if self.live:
@@ -136,8 +154,7 @@ class ServiceNowAdapter:
                 "urgency": ticket.urgency,
                 "caller_id": ticket.caller,
             }
-            r = self._client.post(self._url("table/incident"), headers=self._headers(), json=payload)
-            r.raise_for_status()
+            r = self._request("POST", self._url("table/incident"), json=payload)
             data = r.json()["result"]
             ticket.number = data.get("number", ticket.number)
             ticket.state = data.get("state", ticket.state)
@@ -147,12 +164,7 @@ class ServiceNowAdapter:
 
     def update_incident(self, ticket: Ticket, fields: dict) -> Ticket:
         if self.live:
-            r = self._client.patch(
-                self._url(f"table/incident/{ticket.number}"),
-                headers=self._headers(),
-                json=fields,
-            )
-            r.raise_for_status()
+            self._request("PATCH", self._url(f"table/incident/{ticket.number}"), json=fields)
         else:
             for k, v in fields.items():
                 if hasattr(ticket, k):
@@ -164,10 +176,7 @@ class ServiceNowAdapter:
 
     def get_incident(self, number: str) -> Ticket | None:
         if self.live:
-            r = self._client.get(
-                self._url(f"table/incident?sysparm_query=number={number}"), headers=self._headers()
-            )
-            r.raise_for_status()
+            r = self._request("GET", self._url(f"table/incident?sysparm_query=number={number}"))
             res = r.json()["result"]
             if not res:
                 return None
@@ -206,11 +215,9 @@ class ServiceNowAdapter:
     def get_manager(self, employee: str) -> dict | None:
         if self.live:
             # sys_user table lookup — simplified
-            r = self._client.get(
-                self._url(f"table/sys_user?sysparm_query=name={employee}&sysparm_fields=manager"),
-                headers=self._headers(),
+            r = self._request(
+                "GET", self._url(f"table/sys_user?sysparm_query=name={employee}&sysparm_fields=manager")
             )
-            r.raise_for_status()
             res = r.json()["result"]
             if res and res[0].get("manager"):
                 return {"manager": res[0]["manager"]["display_value"]}

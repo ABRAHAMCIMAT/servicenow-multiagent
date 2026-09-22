@@ -12,10 +12,12 @@ from ..adapters.notifications import NotificationAdapter
 from ..adapters.servicenow import ServiceNowAdapter
 from ..core.llm import LLM
 from ..core.models import Conversation, Intent, Ticket
+from ..llmops.errors import AgentError, LLMOpsError
 from ..llmops.logging import get_logger
 from ..security.redaction import preview
 from .classifier import ClassifierAgent
 from .diagnostic import DiagnosticAgent
+from .escalation import EscalationAgent
 from .execution import ExecutionAgent
 from .knowledge import KnowledgeAgent
 from .metrics import MetricsAgent
@@ -34,7 +36,24 @@ class CoordinatorAgent:
         self.policy = PolicyAgent(llm)
         self.execution = ExecutionAgent(llm, snow)
         self.knowledge = KnowledgeAgent(llm, snow)
+        self.escalation = EscalationAgent(llm, snow)
         self.metrics = MetricsAgent()
+
+    # -- ejecución de agentes con manejo de errores tipado -------------------
+    def _run(self, agent_name: str, fn, *args, **kwargs):
+        """Ejecuta la llamada a un agente traduciendo fallos inesperados a
+        `AgentError` (ver llmops/errors.py). Los errores ya tipados
+        (ValidationError, RetryableError, ProviderError...) no se envuelven
+        de nuevo -- ya traen contexto suficiente."""
+        try:
+            return fn(*args, **kwargs)
+        except LLMOpsError:
+            raise
+        except Exception as e:
+            log.error(
+                f"fallo inesperado en agente '{agent_name}'", extra={"agent": agent_name, "error": str(e)}
+            )
+            raise AgentError(f"El agente '{agent_name}' falló: {e}") from e
 
     def handle(self, user_message: str, caller: str = "Usuario") -> Conversation:
         # Fase 0: nunca registrar el mensaje crudo del usuario
@@ -46,7 +65,7 @@ class CoordinatorAgent:
         conv.add("coordinador", "🤖 Recibí tu solicitud. Voy a analizarla y enrutarla al agente adecuado.")
 
         # 1) Clasificación / triaje
-        conv.classification = self.classifier.classify(user_message)
+        conv.classification = self._run("clasificador", self.classifier.classify, user_message)
         cl = conv.classification
         conv.add(
             "clasificador",
@@ -104,7 +123,7 @@ class CoordinatorAgent:
 
     # -- knowledge ----------------------------------------------------------
     def _handle_knowledge(self, conv: Conversation) -> Conversation:
-        result = self.knowledge.answer(conv)
+        result = self._run("conocimiento", self.knowledge.answer, conv)
         if result["found"]:
             conv.add(
                 "conocimiento",
@@ -112,10 +131,9 @@ class CoordinatorAgent:
                 data=result,
             )
             conv.status = "resolved"
-        else:
-            conv.add("conocimiento", result["message"], data=result)
-            conv.status = "escalated"
-        return conv
+            return conv
+        conv.add("conocimiento", result["message"], data=result)
+        return self._escalate(conv)
 
     # -- status -------------------------------------------------------------
     def _handle_status(self, conv: Conversation) -> Conversation:
@@ -137,20 +155,33 @@ class CoordinatorAgent:
     # -- resolution flow ----------------------------------------------------
     def _handle_resolution(self, conv: Conversation) -> Conversation:
         # 2) Diagnóstico
-        diag = self.diagnostic.diagnose(conv)
+        diag = self._run("diagnostico", self.diagnostic.diagnose, conv)
         conv.add("diagnostico", f"🔍 Diagnóstico: {diag['root_cause']}", data=diag)
 
         action = diag.get("recommended_action", "escalate")
 
+        # El diagnóstico no encontró una acción automatizable: escalar de
+        # inmediato en vez de forzarla por la matriz de políticas/ejecución.
+        if action == "escalate":
+            return self._escalate(conv)
+
         # 3) Políticas
-        policy = self.policy.evaluate(conv, action)
+        policy = self._run("politicas", self.policy.evaluate, conv, action)
         conv.add("politicas", f"⚖️ Política: {policy['reason']}", data=policy)
 
         if policy["requires_approval"]:
             return self._handle_approval(conv, action, policy)
 
         # 4) Ejecución (autoservicio)
-        result = self.execution.execute(conv, action)
+        result = self._run("ejecucion", self.execution.execute, conv, action)
+        if not result.get("success", True):
+            conv.add(
+                "ejecucion",
+                f"⚠️ {result.get('message', 'No se pudo completar la acción automáticamente.')}",
+                data=result,
+            )
+            return self._escalate(conv)
+
         conv.add("ejecucion", f"✅ {result.get('message', 'Acción ejecutada.')}", data=result)
         if conv.ticket:
             self.snow.update_incident(
@@ -158,6 +189,18 @@ class CoordinatorAgent:
             )
             conv.add("coordinador", f"🎫 Ticket **{conv.ticket.number}** resuelto y cerrado.")
         conv.status = "resolved"
+        return conv
+
+    # -- escalación -----------------------------------------------------------
+    def _escalate(self, conv: Conversation) -> Conversation:
+        """Escala el caso a un agente humano de Nivel 2, adjuntando el
+        resumen ejecutivo del diagnóstico previo. Se invoca automáticamente
+        cada vez que el sistema no puede resolver el caso por sí mismo, para
+        evitar transferencias frías (ver EscalationAgent)."""
+        result = self._run("escalacion", self.escalation.escalate, conv)
+        conv.add("escalacion", result["message"], data=result)
+        conv.status = "escalated"
+        log.info("conversación escalada a Nivel 2", extra={"conversation_id": conv.id})
         return conv
 
     # -- approval flow ------------------------------------------------------

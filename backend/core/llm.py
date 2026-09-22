@@ -20,7 +20,8 @@ from typing import Any
 
 import httpx
 
-from ..llmops.errors import RetryableError, retry
+from ..llmops.errors import ProviderError, RetryableError, retry
+from ..llmops.patterns import Strategy
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +122,27 @@ class MockLLM:
                         "summary": "Usuario no puede acceder al CRM",
                     }
                 )
+            # El check de "estado" va antes que el generico de "como" porque
+            # "como va mi ticket?" contiene "como" -- sin este orden, el
+            # patron de conocimiento lo capturaba primero y el caso de
+            # estado del test set (docs/llmops/04_EVALUACION.md) nunca se
+            # alcanzaba (bug detectado al construir scripts/run_evals.py).
+            if "estado" in u or "cómo va" in u or "progreso" in u:
+                return json.dumps(
+                    {
+                        "intent": "status",
+                        "category": "Status",
+                        "subcategory": "",
+                        "assignment_group": "",
+                        "impact": 3,
+                        "urgency": 3,
+                        "priority": "P4",
+                        "confidence": 0.8,
+                        "sentiment": "neutral",
+                        "keywords": ["estado"],
+                        "summary": "Consulta de estado de ticket",
+                    }
+                )
             if "cómo" in u or "como" in u or "paso" in u or "guía" in u or "instrucciones" in u:
                 return json.dumps(
                     {
@@ -185,22 +207,6 @@ class MockLLM:
                         "summary": "Solicitud de licencia de software",
                     }
                 )
-            if "estado" in u or "cómo va" in u or "progreso" in u:
-                return json.dumps(
-                    {
-                        "intent": "status",
-                        "category": "Status",
-                        "subcategory": "",
-                        "assignment_group": "",
-                        "impact": 3,
-                        "urgency": 3,
-                        "priority": "P4",
-                        "confidence": 0.8,
-                        "sentiment": "neutral",
-                        "keywords": ["estado"],
-                        "summary": "Consulta de estado de ticket",
-                    }
-                )
             return json.dumps(
                 {
                     "intent": "general",
@@ -224,6 +230,41 @@ class MockLLM:
                 "4) Recibirás un enlace temporal válido por 15 minutos. "
                 "5) Crea una nueva contraseña segura."
             )
+        # --- LLM-as-judge task ---
+        if "evaluador de calidad" in s:
+            return json.dumps(
+                {"passed": True, "score": 0.85, "reason": "Respuesta clara y basada en el artículo (mock)."}
+            )
+        # --- Test matrix generation task (HU-004) ---
+        if "generador de matrices de pruebas" in s:
+            count_m = re.search(r"exactamente (\d+) casos", u)
+            count = min(int(count_m.group(1)), 30) if count_m else 5
+            example_m = re.search(r"ejemplo válido:\s*(.+)", user, re.IGNORECASE)
+            example = example_m.group(1).strip() if example_m else "entrada de ejemplo"
+            types = ["positive", "negative", "edge"]
+            cases = []
+            for i in range(count):
+                t = types[i % 3]
+                if t == "positive":
+                    inp = f"{example} (variación {i // 3 + 1})"
+                    behavior = "Se procesa correctamente y produce una salida válida."
+                elif t == "negative":
+                    inp = "" if i % 6 == 1 else "asdf!!!___###" * 3
+                    behavior = "Debe ser rechazado o degradar con un mensaje de error claro."
+                else:
+                    inp = "x" * 2000
+                    behavior = (
+                        "Debe manejarse en el límite sin romper el flujo (truncar, rechazar o procesar)."
+                    )
+                cases.append(
+                    {
+                        "type": t,
+                        "input": inp,
+                        "expected_behavior": behavior,
+                        "rationale": "Caso generado por el proveedor mock (sin LLM real).",
+                    }
+                )
+            return json.dumps({"cases": cases})
         # --- Generic fallback ---
         return json.dumps(
             {
@@ -264,8 +305,14 @@ class OpenAICompatLLM:
                 # Fase 0: errores transitorios se reintentan con backoff + jitter
                 if e.response.status_code in (429, 500, 502, 503, 504):
                     raise RetryableError(f"LLM transitorio: HTTP {e.response.status_code}") from e
-                raise
-            return resp.json()["choices"][0]["message"]["content"]
+                # No reintentable (4xx real): se tipa como ProviderError para
+                # que el resto del sistema distinga "el proveedor rechazó la
+                # solicitud" de un bug propio (ver llmops/errors.py).
+                raise ProviderError(f"El proveedor LLM devolvió {e.response.status_code}") from e
+            try:
+                return resp.json()["choices"][0]["message"]["content"]
+            except (ValueError, KeyError, IndexError) as e:
+                raise ProviderError(f"Respuesta del proveedor LLM con formato inesperado: {e}") from e
 
         # Fase 0: retry() con backoff exponencial + jitter (antes definido y no usado)
         return retry(
@@ -277,15 +324,18 @@ class OpenAICompatLLM:
 
 
 # ---------------------------------------------------------------------------
-# Facade
+# Facade — Strategy: selección de implementación por proveedor
 # ---------------------------------------------------------------------------
+_provider_strategy = Strategy(default="openai_compat")
+_provider_strategy.register("mock", lambda config: MockLLM(config))
+_provider_strategy.register("openai_compat", lambda config: OpenAICompatLLM(config))
+
+
 class LLM:
     def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig.from_env()
-        if self.config.provider == "mock":
-            self._impl = MockLLM(self.config)
-        else:
-            self._impl = OpenAICompatLLM(self.config)
+        key = "mock" if self.config.provider == "mock" else "openai_compat"
+        self._impl: MockLLM | OpenAICompatLLM = _provider_strategy.execute(key, self.config)
 
     def chat(self, system: str, user: str, json_mode: bool = False, **kw) -> str:
         messages = [{"role": "system", "content": system}]

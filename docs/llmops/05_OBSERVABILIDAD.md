@@ -79,9 +79,19 @@ langfuse = get_langfuse()  # None si no está configurado
 - Tasa de Abandono
 
 ## Endpoints de observabilidad
-| Endpoint | Descripción |
-|----------|-------------|
-| `GET /api/dashboard` | Métricas de las 4 dimensiones |
-| `GET /api/dashboard/events` | Eventos de telemetría crudos |
-| `GET /dashboard` | Dashboard web |
-| `GET /api/health` | Estado del sistema + observabilidad |
+| Endpoint | Descripción | Rol mínimo |
+|----------|-------------|:---:|
+| `GET /api/dashboard` | Métricas de las 4 dimensiones | agent |
+| `GET /api/dashboard/events` | Eventos de telemetría crudos | admin |
+| `GET /dashboard` | Dashboard web (estático) | público |
+| `GET /api/health` | Liveness público, sin datos de configuración | público |
+| `GET /api/health/detail` | Estado + config (proveedor LLM, modo ServiceNow...) | admin |
+
+Ver [07_GUARDRAILS.md](07_GUARDRAILS.md) — "Seguridad de la API" (Fase 0).
+
+## Límite de eventos en memoria
+
+`Telemetry` mantiene un buffer en memoria acotado por `TELEMETRY_MAX_EVENTS`
+(default 5000) para evitar una fuga de memoria en procesos de larga
+duración — los eventos más antiguos se descartan del buffer al superar el
+límite (el archivo JSONL en disco sigue siendo append-only completo).

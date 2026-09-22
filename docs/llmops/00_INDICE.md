@@ -3,6 +3,12 @@
 Control de documentación por fase del ciclo de vida LLMOps para el desarrollo
 de sistemas multiagentes conversacionales.
 
+> Para la arquitectura del sistema en formato C4 (Contexto → Contenedores →
+> Componentes → Código, con diagramas), ver
+> **[docs/c4/00_INDICE.md](../c4/00_INDICE.md)**. Para seguridad (auth RBAC,
+> rate limiting, redacción de PII, audit trail), ver
+> [docs/SEGURIDAD.md](../SEGURIDAD.md).
+
 ## Índice de fases
 
 | Fase | Documento | Descripción |
@@ -20,9 +26,12 @@ de sistemas multiagentes conversacionales.
 
 1. **Gestión de prompts versionados** — registro central con versionado y huella.
 2. **Evaluación continua** — checks deterministas y LLM-as-judge.
-3. **Observabilidad nativa** — telemetría JSON estandarizada + Langfuse.
+3. **Observabilidad nativa** — telemetría JSON estandarizada (buffer acotado) + Langfuse.
 4. **Guardrails** — validación de entrada/salida, anti inyección de prompt.
-5. **Logging estructurado** — JSON con contexto por conversación/traza.
+5. **Logging estructurado** — JSON con contexto por conversación/traza, sin PII cruda.
 6. **Control de errores** — excepciones tipadas, reintentos con backoff.
-7. **Patrones de diseño** — Registry, Strategy, Chain, Facade, Observer.
+7. **Patrones de diseño** — Registry, Strategy.
 8. **Modelo-agnóstico** — funciona con OpenAI, Jan o Mock sin cambios.
+9. **Seguridad de la API (Fase 0)** — auth RBAC, rate limiting, redacción de PII, audit trail.
+10. **Tests y CI** — suite de pytest (unit/integration/e2e) + lint/tipos/seguridad/Docker en cada push/PR.
+11. **Generación de matrices de pruebas** — casos positivos/negativos/de borde vía LLM (HU-004).
