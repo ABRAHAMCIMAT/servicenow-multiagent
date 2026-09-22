@@ -1,0 +1,28 @@
+# Entorno virtual / Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secretos — nunca commitear el .env real, solo .env.example
+.env
+.env.*
+!.env.example
+
+# Datos y logs en tiempo de ejecución (backend/data/): conversaciones,
+# telemetría y logs generados al correr el sistema, no código fuente.
+# Ver docs/llmops/06_DESPLIEGUE.md — "Backup y recuperación".
+backend/data/*.log
+backend/data/*.out
+backend/data/*.jsonl
+backend/data/conversations.json
+backend/data/test_matrix_*.json
+
+# Editores / SO
+.DS_Store
+.vscode/
+.idea/
