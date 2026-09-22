@@ -40,11 +40,14 @@ class AuditLog:
             return
         with _lock:
             try:
-                os.makedirs(os.path.dirname(self.path), exist_ok=True)
-                with open(self.path, "a") as f:
-                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            except Exception:
-                pass  # la auditoria nunca debe romper el flujo
+                directory = os.path.dirname(self.path)
+                if directory:
+                    os.makedirs(directory, exist_ok=True)
+                with open(self.path, "a", encoding="utf-8") as audit_file:
+                    audit_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            except (OSError, TypeError, ValueError):
+                # La auditoria no debe interrumpir la operacion principal.
+                pass
 
 
 _log: AuditLog | None = None
