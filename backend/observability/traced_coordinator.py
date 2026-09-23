@@ -45,6 +45,7 @@ class TracedCoordinator:
             if sub is not None and hasattr(sub, "llm"):
                 sub.llm = InstrumentedLLM(orig_llm, self._telemetry, trace_id, attr)
 
+        conv: Conversation
         try:
             conv = coord.handle(user_message, caller=caller)
         finally:

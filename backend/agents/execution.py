@@ -8,6 +8,8 @@ licencia) y devuelve el resultado al usuario.
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..core.llm import LLM
 from ..core.models import Conversation
 from ..llmops.evals import Evaluator, check_json_schema
@@ -17,7 +19,7 @@ log = get_logger("agente.ejecucion")
 
 
 class ExecutionAgent:
-    def __init__(self, llm: LLM, snow):
+    def __init__(self, llm: LLM, snow: Any):
         self.llm = llm
         self.snow = snow
         self.evaluator = Evaluator()
@@ -37,12 +39,12 @@ class ExecutionAgent:
         if not target:
             target = self._extract_target(user)
         if action == "unlock_account":
-            return self.snow.unlock_account(target or "cuenta")
+            return dict(self.snow.unlock_account(target or "cuenta"))
         if action == "reset_password":
-            return self.snow.reset_password(target or "usuario")
+            return dict(self.snow.reset_password(target or "usuario"))
         if action == "assign_license":
             software = self._extract_software(user) or "software solicitado"
-            return self.snow.assign_license(software, target or "usuario")
+            return dict(self.snow.assign_license(software, target or "usuario"))
         if action == "request_hardware":
             return {
                 "success": True,

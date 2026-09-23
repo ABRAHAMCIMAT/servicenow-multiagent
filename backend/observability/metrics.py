@@ -26,7 +26,7 @@ class MetricsEngine:
 
     # -- loading ------------------------------------------------------------
     def load_events(self) -> list[dict]:
-        events = []
+        events: list[dict] = []
         if not os.path.exists(self.log_path):
             return events
         with open(self.log_path) as f:
@@ -115,7 +115,9 @@ class MetricsEngine:
         total_tokens = total_prompt + total_completion
 
         # Per-model token breakdown
-        per_model = defaultdict(lambda: {"prompt": 0, "completion": 0, "cost": 0.0})
+        per_model: dict[str, dict[str, float]] = defaultdict(
+            lambda: {"prompt": 0.0, "completion": 0.0, "cost": 0.0}
+        )
         for e in llms:
             m = e.get("model", "unknown")
             per_model[m]["prompt"] += e.get("prompt_tokens", 0)

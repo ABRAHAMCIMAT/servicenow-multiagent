@@ -17,7 +17,7 @@ from __future__ import annotations
 import random
 import time
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from .logging import get_logger
 
@@ -85,7 +85,7 @@ def retry(
     while True:
         attempt += 1
         try:
-            return func()
+            return cast(T, func())
         except retry_on as e:
             if attempt >= max_attempts:
                 raise
@@ -111,7 +111,7 @@ def safe_call(
     *,
     default: Any = None,
     logger: Any | None = None,
-    error_type: type = Exception,
+    error_type: type[BaseException] | tuple[type[BaseException], ...] = Exception,
 ) -> T:
     """Ejecuta `func` y devuelve `default` si falla, registrando el error.
 
@@ -134,4 +134,4 @@ def safe_call(
             "error capturado por safe_call",
             extra={"error": str(e), "func": getattr(func, "__name__", str(func))},
         )
-        return default
+        return cast(T, default)

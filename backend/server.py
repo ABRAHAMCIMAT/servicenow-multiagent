@@ -426,4 +426,6 @@ if __name__ == "__main__":
     print(f"  Frontend:  http://localhost:{port}/app")
     print(f"  Endpoint OpenAI-compatible (para Jan): http://localhost:{port}/v1")
     print(f"    -> modelos: {port}/v1/models | chat: {port}/v1/chat/completions")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # Por defecto solo localhost. Para exponerlo (contenedor) se usa HOST=0.0.0.0,
+    # que docker-compose ya define en el servicio api.
+    uvicorn.run(app, host=os.getenv("HOST", "127.0.0.1"), port=port)  # nosec B104

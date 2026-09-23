@@ -29,7 +29,7 @@ class InstrumentedLLM:
     def chat(self, system: str, user: str, json_mode: bool = False, **kw) -> str:
         start = time.time()
         try:
-            result = self._llm.chat(system, user, json_mode=json_mode, **kw)
+            result: str = self._llm.chat(system, user, json_mode=json_mode, **kw)
             status = "ok"
         except Exception:
             result = ""

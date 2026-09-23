@@ -15,7 +15,7 @@ from ..llmops.logging import get_logger
 log = get_logger("agente.politicas")
 
 # Matriz de políticas: qué requiere aprobación y de quién
-POLICY_MATRIX = {
+POLICY_MATRIX: dict[str, dict] = {
     "unlock_account": {"requires_approval": False, "self_service": True, "approver_role": None},
     "reset_password": {"requires_approval": False, "self_service": True, "approver_role": None},
     "assign_license": {

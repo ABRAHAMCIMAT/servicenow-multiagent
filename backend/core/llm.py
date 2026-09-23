@@ -293,7 +293,7 @@ class OpenAICompatLLM:
         if kw.get("json_mode"):
             payload["response_format"] = {"type": "json_object"}
 
-        def _post():
+        def _post() -> str:
             resp = self._client.post(
                 f"{self.config.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.config.api_key}"},
@@ -310,7 +310,7 @@ class OpenAICompatLLM:
                 # solicitud" de un bug propio (ver llmops/errors.py).
                 raise ProviderError(f"El proveedor LLM devolvió {e.response.status_code}") from e
             try:
-                return resp.json()["choices"][0]["message"]["content"]
+                return str(resp.json()["choices"][0]["message"]["content"])
             except (ValueError, KeyError, IndexError) as e:
                 raise ProviderError(f"Respuesta del proveedor LLM con formato inesperado: {e}") from e
 

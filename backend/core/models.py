@@ -63,6 +63,8 @@ class Ticket:
     assignment_group: str = ""
     assigned_to: str = ""
     caller: str = ""
+    impact: int = 3
+    urgency: int = 3
     created_at: str = ""
     updated_at: str = ""
     resolution_notes: str = ""
@@ -88,6 +90,8 @@ class Ticket:
             "assignment_group": self.assignment_group,
             "assigned_to": self.assigned_to,
             "caller": self.caller,
+            "impact": self.impact,
+            "urgency": self.urgency,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "resolution_notes": self.resolution_notes,

@@ -57,7 +57,8 @@ class Strategy:
         self._strategies[key] = strategy
 
     def execute(self, key: str, *args, **kwargs) -> Any:
-        strategy = self._strategies.get(key) or self._strategies.get(self._default)
+        default_key = self._default or ""
+        strategy = self._strategies.get(key) or self._strategies.get(default_key)
         if strategy is None:
             raise KeyError(f"Estrategia no registrada: {key}")
         return strategy(*args, **kwargs)
