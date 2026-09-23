@@ -15,11 +15,15 @@ RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
+# HOST=0.0.0.0: dentro del contenedor hay que escuchar en todas las interfaces
+# para que el puerto publicado (-p 8000:8000) sea alcanzable. Fuera de un
+# contenedor el backend usa 127.0.0.1 por defecto (ver backend/server.py).
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_ENV=production \
     DATA_DIR=/app/data \
-    PORT=8000
+    PORT=8000 \
+    HOST=0.0.0.0
 
 # Usuario sin privilegios (defensa en profundidad)
 RUN groupadd --system --gid 1001 lindy \
