@@ -49,7 +49,7 @@ pip install -r requirements.txt
 ./scripts/run_demo.sh
 ```
 
-Luego abre `frontend/index.html` en tu navegador (o sirve el frontend con `python3 -m http.server 8080 --directory frontend`).
+Luego abre la consola avanzada en **http://localhost:8000/app** — la sirve el propio backend, mismo origen que la API, sin CORS ni servidor aparte.
 
 También puedes probar la demo interactiva en terminal:
 
@@ -59,16 +59,25 @@ python3 scripts/demo.py
 
 ## 🔌 Integración con Jan
 
-El backend expone un **endpoint compatible con OpenAI** en `http://localhost:8000/v1/chat/completions`, por lo que Jan puede conectarse como proveedor personalizado:
+El backend implementa el contrato **OpenAI-compatible** que Jan consume para un proveedor personalizado, incluida la ruta de descubrimiento de modelos y el streaming SSE en formato estricto.
 
-1. Abre Jan → **Settings → Advanced → OpenAI-compatible API** (o añade un proveedor personalizado).
-2. Configura:
-   - **Base URL:** `http://localhost:8000/v1`
-   - **API Key:** el valor de tu credencial `API_KEYS` (ver Seguridad más abajo) — Jan la envía como `Authorization: Bearer <valor>`.
-   - **Model:** `servicenow-multiagent`
-3. Selecciona el modelo en el chat de Jan y conversa con el sistema multiagente.
+1. Abre Jan → **Settings → Model Providers → Add Provider**.
+2. Elige **OpenAI-compatible** y configura:
+   - **Base URL:** `http://localhost:8000/v1` *(debe terminar en `/v1`)*
+   - **API Key:** el valor de tu credencial `API_KEYS` — Jan la envía como `Authorization: Bearer <valor>`.
+   - **Model ID:** `servicenow-multiagent`
+3. Jan consulta `GET /v1/models` al guardar el proveedor y lista `servicenow-multiagent` automáticamente.
+4. Selecciónalo en el chat y conversa con el sistema multiagente.
 
-> Jan también puede ejecutar el LLM localmente (servidor `localhost:1337`) y este sistema lo usa como proveedor de razonamiento para los agentes.
+| Endpoint | Rol mínimo | Para qué |
+|---|---|---|
+| `GET /v1/models` · `GET /v1/models/{id}` | user | Descubrimiento de modelos (lo que Jan llama al guardar el proveedor) |
+| `POST /v1/chat/completions` | user | Conversación, con o sin `stream` |
+| `GET /app` | público (estático) | Consola web: chat, inspector, dashboard y Jan/API |
+
+La consola web incluye una pestaña **Jan / API** que muestra estos valores con botones de copia y lanza las tres peticiones reales contra el backend, para verificar la integración sin abrir Jan.
+
+> Jan también puede ejecutar el LLM localmente (servidor `localhost:1337`) y este sistema lo usa como proveedor de razonamiento para los agentes: `LLM_PROVIDER=jan`. Detalle completo en [docs/INTEGRACION_JAN.md](docs/INTEGRACION_JAN.md).
 
 ## 🔐 Seguridad (Fase 0)
 
@@ -157,7 +166,7 @@ servicenow-multiagent/
 │   ├── config.py       # Configuración centralizada por entorno
 │   └── server.py       # API REST + endpoint OpenAI-compatible
 ├── frontend/
-│   └── index.html     # Chat web (estilo Jan)
+│   └── index.html     # Consola avanzada: streaming SSE, markdown, historial, inspector
 ├── scripts/            # run_demo, run_live, demo interactiva, run_evals, generate_test_matrix
 ├── tests/               # unit/ · integration/ · e2e/ (pytest)
 ├── Dockerfile, docker-compose.yml
@@ -214,8 +223,9 @@ python3 scripts/demo_telemetry.py
 # 2. Levantar el servidor
 python3 -m backend.server
 
-# 3. Abrir el dashboard
-# http://localhost:8000/dashboard
+# 3. Abrir la consola avanzada (chat + inspector + dashboard + Jan/API)
+# http://localhost:8000/app
+#    o solo el dashboard: http://localhost:8000/dashboard
 ```
 
 ### Configuración de Langfuse (opcional)

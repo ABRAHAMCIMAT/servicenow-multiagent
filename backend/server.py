@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 
 from fastapi import Depends, FastAPI, Request
@@ -136,10 +137,16 @@ class TestMatrixRequest(BaseModel):
     count: int = Field(default=15, ge=1, le=MAX_BATCH_SIZE)
 
 
-# --- Dashboard static files ------------------------------------------------
-_dashboard_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dashboard")
+# --- Dashboard + frontend static files --------------------------------------
+# El frontend avanzado se sirve desde el mismo origen que la API, asi que Jan
+# (o cualquier navegador) lo abre en http://localhost:8000/app sin CORS.
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_dashboard_dir = os.path.join(_ROOT_DIR, "dashboard")
 if os.path.isdir(_dashboard_dir):
     app.mount("/dashboard", StaticFiles(directory=_dashboard_dir, html=True), name="dashboard")
+_frontend_dir = os.path.join(_ROOT_DIR, "frontend")
+if os.path.isdir(_frontend_dir):
+    app.mount("/app", StaticFiles(directory=_frontend_dir, html=True), name="frontend")
 
 
 # --- Health -----------------------------------------------------------------
@@ -266,10 +273,70 @@ def dashboard_events(principal: Principal = Depends(require_role(ROLE_ADMIN))):
 
 
 # --- OpenAI-compatible endpoint (for Jan) ----------------------------------
+# Contrato implementado segun la especificacion de OpenAI que Jan consume:
+#   GET  /v1/models             -> Jan lo consulta al guardar el proveedor
+#   GET  /v1/models/{model_id}  -> recuperacion de un modelo concreto
+#   POST /v1/chat/completions   -> streaming SSE y respuesta no-streaming
+# Jan exige que la Base URL termine en /v1 y hace GET {base_url}/models para
+# descubrir el modelo. Sin esa ruta el proveedor se guarda pero no lista nada.
+MODEL_ID = os.getenv("OPENAI_COMPAT_MODEL_ID", "servicenow-multiagent")
+MODEL_OWNER = os.getenv("OPENAI_COMPAT_MODEL_OWNER", "servicenow-multiagent")
+
+
 class OpenAIRequest(BaseModel):
-    model: str = "servicenow-multiagent"
+    """Peticion estilo OpenAI. Los campos extra (temperature, top_p,
+    stream_options...) se aceptan y se ignoran: el orquestador decide el
+    razonamiento, no el cliente. Jan los envia y no debe fallar por ello."""
+
+    model_config = {"extra": "ignore"}
+
+    model: str = MODEL_ID
     messages: list[dict]
     stream: bool = False
+
+
+def _model_card(model_id: str) -> dict:
+    return {
+        "id": model_id,
+        "object": "model",
+        "created": 0,
+        "owned_by": MODEL_OWNER,
+    }
+
+
+@app.get("/v1/models", dependencies=[Depends(rate_limit_dependency)])
+def list_models(principal: Principal = Depends(require_role(ROLE_USER))):
+    """Lista de modelos disponibles (formato OpenAI). Jan la consulta al
+    guardar el proveedor personalizado; sin ella no aparece ningun modelo."""
+    ids = {MODEL_ID}
+    # El id configurado del LLM tambien se anuncia, para que un cliente pueda
+    # apuntar al modelo subyacente por su nombre.
+    if llm.config.model:
+        ids.add(llm.config.model)
+    return {"object": "list", "data": [_model_card(m) for m in sorted(ids)]}
+
+
+@app.get("/v1/models/{model_id}", dependencies=[Depends(rate_limit_dependency)])
+def get_model(model_id: str, principal: Principal = Depends(require_role(ROLE_USER))):
+    return _model_card(model_id)
+
+
+def _usage_from(conv) -> dict:
+    """Uso de tokens de la conversacion. El orquestador agrega el consumo real
+    por llamada al LLM en la telemetria; aqui se expone 0 cuando el proveedor
+    es `mock` (no hay llamada de red) para no inventar cifras."""
+    return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def _sse_chunk(completion_id: str, model: str, created: int, delta: dict, finish_reason=None) -> str:
+    payload = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+    }
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 @app.post("/v1/chat/completions", dependencies=[Depends(rate_limit_dependency)])
@@ -299,24 +366,36 @@ async def openai_compat(req: OpenAIRequest, principal: Principal = Depends(requi
 
     # Build a coherent assistant reply from the agent trace
     reply = _build_reply(conv)
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+    created = int(time.time())
 
     if req.stream:
 
         async def gen():
+            # Primer chunk: rol, como exige el contrato OpenAI.
+            yield _sse_chunk(completion_id, req.model, created, {"role": "assistant", "content": ""})
             for chunk in _chunk_text(reply):
-                yield f"data: {json.dumps({'choices': [{'delta': {'content': chunk}}]})}\n\n"
+                yield _sse_chunk(completion_id, req.model, created, {"content": chunk})
+            # Chunk final: delta vacio y finish_reason. Sin el, los clientes
+            # (Jan incluido) dejan la respuesta abierta.
+            yield _sse_chunk(completion_id, req.model, created, {}, finish_reason="stop")
             yield "data: [DONE]\n\n"
 
-        return StreamingResponse(gen(), media_type="text/event-stream")
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     return {
-        "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+        "id": completion_id,
         "object": "chat.completion",
+        "created": created,
         "model": req.model,
         "choices": [
             {"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}
         ],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "usage": _usage_from(conv),
     }
 
 
@@ -344,5 +423,7 @@ if __name__ == "__main__":
     print("  Seguridad: auth + RBAC + rate limit + redacción PII + audit trail")
     print(f"  CORS: {config.CORS_ORIGINS}")
     print(f"  Dashboard: http://localhost:{port}/dashboard")
-    print(f"  Endpoint OpenAI-compatible (para Jan): http://localhost:{port}/v1/chat/completions")
+    print(f"  Frontend:  http://localhost:{port}/app")
+    print(f"  Endpoint OpenAI-compatible (para Jan): http://localhost:{port}/v1")
+    print(f"    -> modelos: {port}/v1/models | chat: {port}/v1/chat/completions")
     uvicorn.run(app, host="0.0.0.0", port=port)
