@@ -7,6 +7,7 @@ export PORT="${PORT:-8000}"
 echo "🚀 ServiceNow Multi-Agent System (demo mode)"
 echo "   LLM: $LLM_PROVIDER | Puerto: $PORT"
 echo "   API:      http://localhost:$PORT/api"
-echo "   Frontend: abre frontend/index.html en tu navegador"
+echo "   Consola:  http://localhost:$PORT/app"
+echo "   Dashboard: http://localhost:$PORT/dashboard"
 echo ""
 python3 -m backend.server
