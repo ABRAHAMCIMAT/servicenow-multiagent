@@ -1,7 +1,7 @@
 fastapi>=0.110
 uvicorn[standard]>=0.53.0
 httpx>=0.28.1
-pydantic>=2.6
+pydantic>=2.13.5
 python-dotenv>=1.2.3          # carga de .env en desarrollo
 # Fase 0: seguridad (alternativa mantenida al rate limiter propio)
 slowapi>=0.1.10
