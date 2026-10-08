@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Etapa 1: builder — compila las dependencias en wheels
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 RUN pip install --no-cache-dir --upgrade pip
@@ -13,7 +13,7 @@ RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 # ---------------------------------------------------------------------------
 # Etapa 2: runtime — imagen final minima
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # HOST=0.0.0.0: dentro del contenedor hay que escuchar en todas las interfaces
 # para que el puerto publicado (-p 8000:8000) sea alcanzable. Fuera de un
