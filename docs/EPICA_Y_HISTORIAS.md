@@ -1,6 +1,6 @@
 # Épica e Historias de Usuario — ServiceNow Multi-Agent Conversational System
 
-> **Versión 2.0** — Incluye observabilidad, dashboard de 4 dimensiones, LLMOps y control total del sistema.
+> **Versión 2.2** — Incluye observabilidad, dashboard de 4 dimensiones, LLMOps, control total del sistema, integración con Jan (contrato OpenAI-compatible) y consola avanzada en `/app`.
 
 ## 🎯 ÉPICA
 
@@ -257,9 +257,12 @@
 - **T**estable: conectar Jan y conversar.
 
 **Criterios de aceptación:**
-- El backend expone `/v1/chat/completions` compatible con OpenAI.
+- El backend expone `/v1/chat/completions` compatible con OpenAI, con streaming SSE conforme al contrato (primer chunk con rol, chunks con `id`/`object`/`created` y chunk final con `finish_reason=stop`).
+- `GET /v1/models` y `GET /v1/models/{id}` permiten a Jan descubrir el modelo al guardar el proveedor.
 - Jan se conecta con Base URL `http://localhost:8000/v1`.
 - El modelo `servicenow-multiagent` responde en el chat de Jan.
+- El backend sirve una **consola avanzada en `/app`**: streaming en vivo, markdown, historial de conversaciones, inspector de agentes, pestaña Jan/API con pruebas reales y tema claro/oscuro.
+- Los campos extra de OpenAI (`temperature`, `top_p`, `stream_options`) se ignoran sin fallar.
 
 ---
 
@@ -573,4 +576,4 @@
 | HU-027 | Documentación por fase (LLMOps) | Media | 3 |
 | HU-028 | Generación de matrices de pruebas | Alta | 5 |
 
-**Total estimado:** ~95 puntos · **28 historias** · **1 épica** · **Versión 2.1**
+**Total estimado:** ~95 puntos · **28 historias** · **1 épica** · **Versión 2.2**
