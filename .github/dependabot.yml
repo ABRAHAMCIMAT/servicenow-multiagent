@@ -11,15 +11,18 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     labels: ["dependencias", "python"]
+    enabled: false
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
     labels: ["dependencias", "ci"]
+    enabled: false
 
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
     labels: ["dependencias", "docker"]
+    enabled: false
